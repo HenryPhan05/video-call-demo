@@ -1,2 +1,13 @@
-import { Router } from 'express'; import { requireAuth } from '../middleware/require-auth'; import { asyncHandler } from '../utils/async-handler'; import * as c from '../controllers/friend.controller';
-export const friendRouter=Router();friendRouter.use(requireAuth);friendRouter.get('/',asyncHandler(c.list));friendRouter.get('/pending',asyncHandler(c.pending));friendRouter.post('/requests',asyncHandler(c.request));friendRouter.patch('/requests/:id/accept',asyncHandler(c.accept));friendRouter.patch('/requests/:id/reject',asyncHandler(c.reject));friendRouter.delete('/requests/:userId',asyncHandler(c.cancel));friendRouter.delete('/:userId',asyncHandler(c.remove));
+import { Router } from "express";
+import { requireAuth } from "../middleware/require-auth";
+import { asyncHandler } from "../utils/async-handler";
+import * as c from "../controllers/friend.controller";
+export const friendRouter = Router();
+friendRouter.use(requireAuth);
+friendRouter.get("/", asyncHandler(c.list));
+friendRouter.get("/pending", asyncHandler(c.pending));
+friendRouter.post("/requests", asyncHandler(c.request));
+friendRouter.patch("/requests/:id/accept", asyncHandler(c.accept));
+friendRouter.patch("/requests/:id/reject", asyncHandler(c.reject));
+friendRouter.delete("/requests/:userId", asyncHandler(c.cancel));
+friendRouter.delete("/:userId", asyncHandler(c.remove));

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from "react";
 
 type VoiceRecorderProps = {
   disabled?: boolean;
@@ -6,7 +6,11 @@ type VoiceRecorderProps = {
   onRecordingChange?: (recording: boolean) => void;
 };
 
-export function VoiceRecorder({ disabled = false, onRecorded, onRecordingChange }: VoiceRecorderProps) {
+export function VoiceRecorder({
+  disabled = false,
+  onRecorded,
+  onRecordingChange,
+}: VoiceRecorderProps) {
   const recorder = useRef<MediaRecorder | null>(null);
   const timer = useRef<number | null>(null);
   const cancelled = useRef(false);
@@ -20,9 +24,11 @@ export function VoiceRecorder({ disabled = false, onRecorded, onRecordingChange 
   const duration = useRef(0);
   const [seconds, setSeconds] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
-  useEffect(() => { recordingChange.current = onRecordingChange; }, [onRecordingChange]);
+  useEffect(() => {
+    recordingChange.current = onRecordingChange;
+  }, [onRecordingChange]);
   useEffect(() => () => cleanup(), []);
   useEffect(() => {
     if (isRecording && analyserNode.current) draw(analyserNode.current);
@@ -40,7 +46,7 @@ export function VoiceRecorder({ disabled = false, onRecorded, onRecordingChange 
   function draw(analyser: AnalyserNode) {
     const target = canvas.current;
     if (!target || !recording.current) return;
-    const context = target.getContext('2d');
+    const context = target.getContext("2d");
     if (!context) return;
     const values = new Uint8Array(analyser.frequencyBinCount);
     analyser.getByteFrequencyData(values);
@@ -48,10 +54,15 @@ export function VoiceRecorder({ disabled = false, onRecorded, onRecordingChange 
     const bars = 28;
     const width = target.width / bars;
     for (let index = 0; index < bars; index += 1) {
-      const value = values[Math.floor(index * values.length / bars)] / 255;
+      const value = values[Math.floor((index * values.length) / bars)] / 255;
       const height = Math.max(3, value * target.height);
-      context.fillStyle = '#f02849';
-      context.fillRect(index * width + 1, (target.height - height) / 2, Math.max(2, width - 3), height);
+      context.fillStyle = "#f02849";
+      context.fillRect(
+        index * width + 1,
+        (target.height - height) / 2,
+        Math.max(2, width - 3),
+        height,
+      );
     }
     animation.current = requestAnimationFrame(() => draw(analyser));
   }
@@ -59,18 +70,33 @@ export function VoiceRecorder({ disabled = false, onRecorded, onRecordingChange 
   async function start() {
     if (disabled || recording.current) return;
     try {
-      setError('');
+      setError("");
       cancelled.current = false;
       releaseRequested.current = false;
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
       const chunks: Blob[] = [];
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : undefined;
-      const next = new MediaRecorder(stream, { mimeType });
-      next.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : undefined;
+      const next = new MediaRecorder(stream, {
+        mimeType,
+      });
+      next.ondataavailable = (event) => {
+        if (event.data.size) chunks.push(event.data);
+      };
       next.onstop = () => {
         if (!cancelled.current && chunks.length) {
-          const blob = new Blob(chunks, { type: next.mimeType || 'audio/webm' });
-          onRecorded(new File([blob], `voice-${Date.now()}.webm`, { type: blob.type }), Math.max(1, duration.current));
+          const blob = new Blob(chunks, {
+            type: next.mimeType || "audio/webm",
+          });
+          onRecorded(
+            new File([blob], `voice-${Date.now()}.webm`, {
+              type: blob.type,
+            }),
+            Math.max(1, duration.current),
+          );
         }
         stream.getTracks().forEach((track) => track.stop());
       };
@@ -94,14 +120,19 @@ export function VoiceRecorder({ disabled = false, onRecorded, onRecordingChange 
       analyserNode.current = analyser;
       if (releaseRequested.current) finish(false);
     } catch {
-      setError('Microphone permission is required.');
+      setError("Microphone permission is required.");
       recordingChange.current?.(false);
     }
   }
 
   function finish(cancel: boolean) {
     releaseRequested.current = true;
-    if (!recording.current || !recorder.current || recorder.current.state === 'inactive') return;
+    if (
+      !recording.current ||
+      !recorder.current ||
+      recorder.current.state === "inactive"
+    )
+      return;
     cancelled.current = cancel;
     recorder.current.stop();
     if (timer.current) window.clearInterval(timer.current);
@@ -120,22 +151,42 @@ export function VoiceRecorder({ disabled = false, onRecorded, onRecordingChange 
     <div className="voice-recorder">
       <button
         type="button"
-        className={isRecording ? 'hold-record recording' : 'hold-record'}
+        className={isRecording ? "hold-record recording" : "hold-record"}
         disabled={disabled}
-        title={disabled ? 'Remove selected files before recording' : 'Hold to record a voice message'}
+        title={
+          disabled
+            ? "Remove selected files before recording"
+            : "Hold to record a voice message"
+        }
         onPointerDown={() => void start()}
         onPointerUp={() => finish(false)}
         onPointerCancel={() => finish(true)}
-        onKeyDown={(event) => { if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) void start(); }}
-        onKeyUp={(event) => { if (event.key === ' ' || event.key === 'Enter') finish(false); }}
+        onKeyDown={(event) => {
+          if ((event.key === " " || event.key === "Enter") && !event.repeat)
+            void start();
+        }}
+        onKeyUp={(event) => {
+          if (event.key === " " || event.key === "Enter") finish(false);
+        }}
       >
-        {isRecording ? `Release · ${seconds}s` : '🎙 Hold'}
+        {isRecording ? `Release · ${seconds}s` : "🎙 Hold"}
       </button>
       {isRecording && (
         <div className="recording-panel">
           <span className="recording-dot" />
-          <canvas ref={canvas} width="180" height="32" aria-label="Live audio waveform" />
-          <button type="button" className="cancel-recording" onClick={() => finish(true)}>Cancel</button>
+          <canvas
+            ref={canvas}
+            width="180"
+            height="32"
+            aria-label="Live audio waveform"
+          />
+          <button
+            type="button"
+            className="cancel-recording"
+            onClick={() => finish(true)}
+          >
+            Cancel
+          </button>
         </div>
       )}
       {error && <small className="error">{error}</small>}

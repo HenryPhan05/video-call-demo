@@ -1,2 +1,38 @@
-import { Router } from 'express'; import * as c from '../controllers/auth.controller'; import { requireAuth } from '../middleware/require-auth'; import { validate } from '../middleware/validate'; import { asyncHandler } from '../utils/async-handler'; import { registerSchema,loginSchema,changePasswordSchema,forgotPasswordSchema,resetPasswordSchema } from '../validators/auth.validators';
-export const authRouter=Router(); authRouter.post('/register',validate(registerSchema),asyncHandler(c.register));authRouter.post('/login',validate(loginSchema),asyncHandler(c.login));authRouter.post('/refresh',asyncHandler(c.refresh));authRouter.post('/logout',c.logout);authRouter.post('/logout-all',requireAuth,asyncHandler(c.logoutAll));authRouter.post('/change-password',requireAuth,validate(changePasswordSchema),asyncHandler(c.changePassword));authRouter.post('/forgot-password',validate(forgotPasswordSchema),asyncHandler(c.forgotPassword));authRouter.post('/reset-password',validate(resetPasswordSchema),asyncHandler(c.resetPassword));
+import { Router } from "express";
+import * as c from "../controllers/auth.controller";
+import { requireAuth } from "../middleware/require-auth";
+import { validate } from "../middleware/validate";
+import { asyncHandler } from "../utils/async-handler";
+import {
+  registerSchema,
+  loginSchema,
+  changePasswordSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+} from "../validators/auth.validators";
+export const authRouter = Router();
+authRouter.post(
+  "/register",
+  validate(registerSchema),
+  asyncHandler(c.register),
+);
+authRouter.post("/login", validate(loginSchema), asyncHandler(c.login));
+authRouter.post("/refresh", asyncHandler(c.refresh));
+authRouter.post("/logout", c.logout);
+authRouter.post("/logout-all", requireAuth, asyncHandler(c.logoutAll));
+authRouter.post(
+  "/change-password",
+  requireAuth,
+  validate(changePasswordSchema),
+  asyncHandler(c.changePassword),
+);
+authRouter.post(
+  "/forgot-password",
+  validate(forgotPasswordSchema),
+  asyncHandler(c.forgotPassword),
+);
+authRouter.post(
+  "/reset-password",
+  validate(resetPasswordSchema),
+  asyncHandler(c.resetPassword),
+);
