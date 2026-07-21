@@ -3,6 +3,7 @@
 ```mermaid
 erDiagram
   USER ||--o{ REFRESH_TOKEN : owns
+  USER ||--o{ EMAIL_VERIFICATION_TOKEN : verifies
   USER ||--o{ FRIEND : sends
   USER ||--o{ PARTICIPANT : joins
   CONVERSATION ||--o{ PARTICIPANT : contains

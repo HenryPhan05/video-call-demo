@@ -2,6 +2,9 @@ import { apiClient } from "./client";
 
 export type User = {
   id: string;
+  firstName: string;
+  lastName?: string | null;
+  username: string;
   name: string;
   email: string;
   avatarColor?: string;
@@ -87,7 +90,9 @@ export const getMe = () =>
     }>,
   );
 export const updateCurrentUser = (input: {
- name: string
+  firstName: string;
+  lastName: string;
+  username: string;
 }) =>
   apiClient.patch("/users/me", input).then(
     body<{
@@ -123,15 +128,31 @@ export const login = (input: {
     }>,
   );
 export const register = (input: {
-  name: string;
+  firstName: string;
+  lastName?: string;
+  username: string;
   email: string;
   password: string;
 }) =>
   apiClient.post("/auth/register", input).then(
     body<{
+      verificationRequired: true;
+      email: string;
+    }>,
+  );
+export const verifyEmail = (input: {
+  email: string;
+  code: string;
+}) =>
+  apiClient.post("/auth/verify-email", input).then(
+    body<{
       user: User;
     }>,
   );
+export const resendVerification = (email: string) =>
+  apiClient.post("/auth/resend-verification", {
+    email,
+  });
 export const logout = () => apiClient.post("/auth/logout");
 export const searchUsers = (query: string) =>
   apiClient

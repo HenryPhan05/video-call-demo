@@ -1,4 +1,5 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import * as c from "../controllers/auth.controller";
 import { requireAuth } from "../middleware/require-auth";
 import { validate } from "../middleware/validate";
@@ -9,14 +10,48 @@ import {
   changePasswordSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  verifyEmailSchema,
+  resendVerificationSchema,
 } from "../validators/auth.validators";
 export const authRouter = Router();
+const verificationLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many verification attempts. Try again later.",
+  },
+});
+const resendLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many code requests. Try again later.",
+  },
+});
 authRouter.post(
   "/register",
   validate(registerSchema),
   asyncHandler(c.register),
 );
 authRouter.post("/login", validate(loginSchema), asyncHandler(c.login));
+authRouter.post(
+  "/verify-email",
+  verificationLimiter,
+  validate(verifyEmailSchema),
+  asyncHandler(c.verifyEmail),
+);
+authRouter.post(
+  "/resend-verification",
+  resendLimiter,
+  validate(resendVerificationSchema),
+  asyncHandler(c.resendVerification),
+);
 authRouter.post("/refresh", asyncHandler(c.refresh));
 authRouter.post("/logout", c.logout);
 authRouter.post("/logout-all", requireAuth, asyncHandler(c.logoutAll));

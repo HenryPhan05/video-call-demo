@@ -6,7 +6,7 @@ This repository is also a full-stack learning project that demonstrates how a Re
 
 ## What can the app do?
 
-- Register, sign in, sign out, and maintain an authenticated session.
+- Register with email-code verification, sign in, sign out, and maintain an authenticated session.
 - Search for users and start direct conversations.
 - Send, edit, soft-delete, reply to, and react to messages.
 - Display message delivery/seen state and typing indicators.
@@ -74,6 +74,7 @@ The backend is located in [`backend/`](backend/) and uses:
 | JSON Web Token          | Access-token authentication                                                     |
 | bcryptjs                | Password hashing                                                                |
 | Multer                  | Avatar and chat attachment uploads                                              |
+| Resend                  | HTTPS API delivery of account verification codes                                |
 | Zod                     | API request validation                                                          |
 | Helmet                  | Security-related HTTP headers                                                   |
 | express-rate-limit      | Authentication endpoint rate limiting                                           |
@@ -90,13 +91,16 @@ Yes, Chatting uses JWT authentication.
 - Raw refresh tokens are never stored in MySQL; the backend stores a SHA-256 hash.
 - Refresh tokens are rotated and the previous database record is revoked during refresh.
 - Passwords are hashed with bcrypt using 12 rounds.
+- New accounts receive a six-digit email code and cannot sign in until verified.
+- Verification codes expire, are attempt-limited, and are stored only as keyed hashes.
+- Verification codes can be resent after a cooldown; resend and verification endpoints are rate limited.
 - Socket.IO validates the access-token cookie during its handshake.
 - Protected routes verify the authenticated user and conversation membership.
 - Attachment view/download endpoints only return files linked to a conversation the user belongs to.
 - Zod validates supported request bodies.
 - Helmet, CORS, JSON size limits, and authentication rate limiting protect the HTTP layer.
 
-The forgot-password email delivery is intentionally mocked for local development: the reset token is written to the backend console.
+Verification email is delivered through Resend when `EMAIL_PROVIDER=resend` and `RESEND_API_KEY` is configured. Without a Resend key, development mode writes the verification code to the backend terminal so local testing remains possible; production rejects registration if email delivery is not configured. The forgot-password delivery remains mocked locally and writes its reset token to the backend console.
 
 ## Database and Prisma
 
@@ -104,7 +108,7 @@ Chatting uses Prisma ORM with MySQL. The schema is in [`backend/prisma/schema.pr
 
 Important database models include:
 
-- `User`, `RefreshToken`, and `PasswordResetToken`
+- `User`, `RefreshToken`, `PasswordResetToken`, and `EmailVerificationToken`
 - `Friend` and `Block`
 - `Conversation` and `Participant`
 - `Message`, `MessageReaction`, `MessagePin`, `MessageMention`, and `MessageReceipt`
@@ -214,6 +218,10 @@ CLIENT_ORIGIN=http://localhost:5173
 DATABASE_URL="mysql://chatter:chatter_dev_password@localhost:3307/chatter"
 REDIS_URL=redis://localhost:6379
 JWT_SECRET=replace-this-with-a-long-random-secret
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=re_your_api_key
+RESEND_FROM="chatting@noreply <onboarding@resend.dev>"
+EMAIL_VERIFICATION_CODE_TTL_MINUTES=10
 ACCESS_TOKEN_TTL=15m
 REFRESH_TOKEN_TTL_DAYS=7
 UPLOAD_DIR=uploads

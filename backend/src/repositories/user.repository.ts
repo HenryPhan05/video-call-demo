@@ -1,4 +1,19 @@
 import { prisma } from "../lib/prisma";
+
+const publicUserSelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  username: true,
+  name: true,
+  email: true,
+  avatarUrl: true,
+  role: true,
+  lastSeenAt: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 export class UserRepository {
   findByEmail(email: string) {
     return prisma.user.findUnique({
@@ -7,6 +22,15 @@ export class UserRepository {
       },
     });
   }
+
+  findByUsername(username: string) {
+    return prisma.user.findUnique({
+      where: {
+        username,
+      },
+    });
+  }
+
   findById(id: string) {
     return prisma.user.findUnique({
       where: {
@@ -14,15 +38,19 @@ export class UserRepository {
       },
     });
   }
+
   create(input: {
- name: string;
- email: string;
- passwordHash: string
-}) {
+    firstName: string;
+    lastName?: string;
+    username: string;
+    email: string;
+    passwordHash: string;
+  }) {
     return prisma.user.create({
       data: input,
     });
   }
+
   updatePassword(id: string, passwordHash: string) {
     return prisma.user.update({
       where: {
@@ -33,10 +61,13 @@ export class UserRepository {
       },
     });
   }
+
   updateProfile(
     id: string,
     data: {
-      name: string;
+      firstName?: string;
+      lastName?: string | null;
+      username?: string;
       privacy?: object;
     },
   ) {
@@ -45,21 +76,15 @@ export class UserRepository {
         id,
       },
       data: {
-        name: data.name,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        username: data.username,
         privacy: data.privacy,
       },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        avatarUrl: true,
-        role: true,
-        lastSeenAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: publicUserSelect,
     });
   }
+
   updateAvatar(
     id: string,
     data: {
@@ -73,18 +98,10 @@ export class UserRepository {
         id,
       },
       data,
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        avatarUrl: true,
-        role: true,
-        lastSeenAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
+      select: publicUserSelect,
     });
   }
+
   updateLastSeen(id: string, lastSeenAt: Date) {
     return prisma.user.update({
       where: {
@@ -99,6 +116,7 @@ export class UserRepository {
       },
     });
   }
+
   block(blockerId: string, blockedId: string) {
     return prisma.block.upsert({
       where: {
@@ -114,6 +132,7 @@ export class UserRepository {
       update: {},
     });
   }
+
   unblock(blockerId: string, blockedId: string) {
     return prisma.block.delete({
       where: {
@@ -124,20 +143,29 @@ export class UserRepository {
       },
     });
   }
+
   search(query: string) {
     return prisma.user.findMany({
       where: {
-        name: {
-          contains: query,
-        },
+        OR: [
+          {
+            firstName: {
+              contains: query,
+            },
+          },
+          {
+            lastName: {
+              contains: query,
+            },
+          },
+          {
+            username: {
+              contains: query,
+            },
+          },
+        ],
       },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        avatarUrl: true,
-        lastSeenAt: true,
-      },
+      select: publicUserSelect,
       take: 20,
     });
   }

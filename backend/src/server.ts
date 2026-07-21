@@ -7,7 +7,7 @@ import { tokenCookieName, verifyAccessToken } from "./utils/token";
 import { registerChatSocket } from "./socket/chat.socket";
 import { registerCallSocket } from "./socket/call.socket";
 import { registerPresenceSocket } from "./socket/presence.socket";
-import { connectRedis, redis } from "./lib/redis";
+import { connectRedis, disconnectRedis, redis } from "./lib/redis";
 
 async function bootstrap() {
   const httpServer = createServer(app);
@@ -22,12 +22,14 @@ async function bootstrap() {
   try {
     await connectRedis();
     const subscriber = redis.duplicate();
+    subscriber.on("error", () => undefined);
     if (subscriber.status === "wait") await subscriber.connect();
     io.adapter(createAdapter(redis, subscriber));
   } catch (error) {
+    disconnectRedis();
+    const reason = error instanceof Error ? error.message : String(error);
     console.warn(
-      "Redis adapter unavailable; continuing with a single Socket.IO node.",
-      error,
+      `[redis] unavailable (${reason}); continuing with a single Socket.IO node.`,
     );
   }
 

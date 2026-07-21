@@ -13,6 +13,7 @@ import {
   markConversationSeen,
   Message,
   register,
+  resendVerification,
   searchUsers,
   sendMessage,
   startConversation,
@@ -22,6 +23,7 @@ import {
   uploadAttachment,
   uploadAvatar,
   User,
+  verifyEmail,
 } from "./api/chat";
 import { AttachmentPicker } from "./components/chat/AttachmentPicker";
 import { FileDropZone } from "./components/chat/FileDropZone";
@@ -50,39 +52,255 @@ export function App() {
 }
 
 function Auth() {
+  const queryClient = useQueryClient();
+  const pendingEmailKey = "chatting.pending-verification-email";
+  const resendDeadlineKey = "chatting.resend-available-at";
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
+  const [verificationEmail, setVerificationEmail] = useState<string | null>(
+    () => sessionStorage.getItem(pendingEmailKey),
+  );
+  const [verificationCode, setVerificationCode] = useState("");
+  const [verificationMessage, setVerificationMessage] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(() => {
+    const deadline = Number(sessionStorage.getItem(resendDeadlineKey) ?? 0);
+    return Math.max(0, Math.ceil((deadline - Date.now()) / 1_000));
+  });
+  const passwordRules = {
+    length: password.length >= 8 && password.length < 30,
+    uppercase: /[A-Z]/.test(password),
+    lowercase: /[a-z]/.test(password),
+    number: /[0-9]/.test(password),
+    special: /[^A-Za-z0-9\s]/.test(password),
+  };
+  const matchedPasswordCases = [
+    passwordRules.uppercase,
+    passwordRules.lowercase,
+    passwordRules.number,
+    passwordRules.special,
+  ].filter(Boolean).length;
+  const passwordStrength =
+    matchedPasswordCases === 4 && passwordRules.length
+      ? "strong"
+      : matchedPasswordCases === 0
+        ? "low"
+        : "weak";
+  const passwordsMatch =
+    confirmPassword.length > 0 && password === confirmPassword;
+
+  const rememberVerificationEmail = (value: string) => {
+    sessionStorage.setItem(pendingEmailKey, value);
+    setVerificationEmail(value);
+  };
+
+  const startResendCooldown = () => {
+    sessionStorage.setItem(
+      resendDeadlineKey,
+      String(Date.now() + 60_000),
+    );
+    setResendCooldown(60);
+  };
+
+  const clearPendingVerification = () => {
+    sessionStorage.removeItem(pendingEmailKey);
+    sessionStorage.removeItem(resendDeadlineKey);
+    setVerificationEmail(null);
+    setResendCooldown(0);
+  };
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setTimeout(() => {
+      const deadline = Number(
+        sessionStorage.getItem(resendDeadlineKey) ?? 0,
+      );
+      const remaining = Math.max(
+        0,
+        Math.ceil((deadline - Date.now()) / 1_000),
+      );
+      setResendCooldown(remaining);
+      if (remaining === 0) sessionStorage.removeItem(resendDeadlineKey);
+    }, 1_000);
+    return () => window.clearTimeout(timer);
+  }, [resendCooldown]);
 
   const mutation = useMutation({
-    mutationFn: () =>
-      mode === "login"
-        ? login({
+    mutationFn: async () => {
+      if (mode === "login")
+        return {
+          kind: "login" as const,
+          result: await login({
           email,
           password,
-        })
-        : register({
-          name,
+          }),
+        };
+      return {
+        kind: "register" as const,
+        result: await register({
+          firstName,
+          lastName: lastName.trim() || undefined,
+          username,
           email,
           password,
         }),
-    onSuccess: () => location.reload(),
+      };
+    },
+    onSuccess: (response) => {
+      if (response.kind === "login") {
+        queryClient.setQueryData(["me"], response.result);
+        return;
+      }
+      rememberVerificationEmail(response.result.email);
+      setVerificationCode("");
+      setVerificationMessage("We sent a six-digit code to your email.");
+      setError("");
+    },
     onError: (cause) => {
       const message = axios.isAxiosError(cause)
         ? cause.response?.data?.message
         : undefined;
+      if (
+        mode === "login" &&
+        axios.isAxiosError(cause) &&
+        cause.response?.status === 403
+      ) {
+        rememberVerificationEmail(email.trim().toLowerCase());
+        setVerificationCode("");
+        setVerificationMessage("Enter your verification code to continue.");
+      }
       setError(
         message ?? "Authentication failed. Check your details and try again.",
       );
     },
   });
 
+  const verificationMutation = useMutation({
+    mutationFn: () =>
+      verifyEmail({
+        email: verificationEmail!,
+        code: verificationCode,
+      }),
+    onSuccess: (response) => {
+      clearPendingVerification();
+      queryClient.setQueryData(["me"], response);
+    },
+    onError: (cause) => {
+      const message = axios.isAxiosError(cause)
+        ? cause.response?.data?.message
+        : undefined;
+      setError(message ?? "The verification code could not be accepted.");
+    },
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: () => resendVerification(verificationEmail!),
+    onSuccess: () => {
+      setError("");
+      setVerificationMessage("A new six-digit code has been sent.");
+      startResendCooldown();
+    },
+    onError: (cause) => {
+      const message = axios.isAxiosError(cause)
+        ? cause.response?.data?.message
+        : undefined;
+      setError(message ?? "A new verification code could not be sent.");
+      if (axios.isAxiosError(cause) && cause.response?.status === 429)
+        startResendCooldown();
+    },
+  });
+
+  if (verificationEmail)
+    return (
+      <main className="auth">
+        <h1>Chatting</h1>
+        <h2>Verify your email</h2>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            setError("");
+            verificationMutation.mutate();
+          }}
+        >
+          <p className="verification-help">
+            Enter the code sent to <strong>{verificationEmail}</strong>.
+          </p>
+          <input
+            className="verification-code"
+            value={verificationCode}
+            onChange={(event) =>
+              setVerificationCode(event.target.value.replace(/\D/g, ""))
+            }
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="000000"
+            minLength={6}
+            maxLength={6}
+            pattern="[0-9]{6}"
+            aria-label="Six-digit verification code"
+            autoFocus
+            required
+          />
+          {verificationMessage && (
+            <p className="verification-message">{verificationMessage}</p>
+          )}
+          {resendCooldown > 0 && (
+            <p className="verification-cooldown" aria-live="polite">
+              Cooldown: <strong>{resendCooldown}</strong>{" "}
+              {resendCooldown === 1 ? "second" : "seconds"}
+            </p>
+          )}
+          {error && <p className="error">{error}</p>}
+          <button
+            type="submit"
+            disabled={
+              verificationCode.length !== 6 || verificationMutation.isPending
+            }
+          >
+            {verificationMutation.isPending
+              ? "Verifying..."
+              : "Verify and continue"}
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            disabled={resendMutation.isPending || resendCooldown > 0}
+            onClick={() => resendMutation.mutate()}
+          >
+            {resendMutation.isPending
+              ? "Sending..."
+              : resendCooldown > 0
+                ? `Resend code in ${resendCooldown}s`
+                : "Resend code"}
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => {
+              clearPendingVerification();
+              setVerificationCode("");
+              setVerificationMessage("");
+              setError("");
+              setMode("login");
+            }}
+          >
+            Back to sign in
+          </button>
+        </form>
+      </main>
+    );
+
   return (
     <main className="auth">
       <h1>Chatting</h1>
-      <h2>{mode === "login" ? "Sign in" : "Create account"}</h2>
+      <h2>{mode === "login" ? "Sign in" : "Register"}</h2>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -90,31 +308,150 @@ function Auth() {
         }}
       >
         {mode === "register" && (
-          <input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Name"
-            minLength={2}
-            required
-          />
+          <>
+            <input
+              value={firstName}
+              onChange={(event) => setFirstName(event.target.value)}
+              placeholder="First name"
+              minLength={2}
+              maxLength={100}
+              autoComplete="given-name"
+              required
+            />
+            <input
+              value={lastName}
+              onChange={(event) => setLastName(event.target.value)}
+              placeholder="Last name (optional)"
+              minLength={2}
+              maxLength={100}
+              autoComplete="family-name"
+            />
+            <input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="Username"
+              minLength={5}
+              maxLength={30}
+              pattern="[A-Za-z0-9._]+"
+              title="Use letters, numbers, periods, or underscores."
+              autoComplete="username"
+              required
+            />
+          </>
         )}
         <input
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           type="email"
           placeholder="Email"
+          autoComplete="email"
           required
         />
-        <input
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          type="password"
-          placeholder="Password"
-          minLength={8}
-          required
-        />
+        <div className="password-field">
+          <input
+            id="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            type={showPassword ? "text" : "password"}
+            placeholder="Password"
+            minLength={8}
+            maxLength={mode === "register" ? 29 : undefined}
+            autoComplete={
+              mode === "login" ? "current-password" : "new-password"
+            }
+            required
+          />
+          <button
+            className="password-toggle"
+            type="button"
+            onClick={() => setShowPassword((current) => !current)}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-controls="password"
+            aria-pressed={showPassword}
+          >
+            <PasswordVisibilityIcon visible={showPassword} />
+          </button>
+        </div>
+        {mode === "register" && (
+          <>
+            <div className={`password-strength ${passwordStrength}`}>
+              <div className="password-strength-heading">
+                <strong>Password strength</strong>
+                <span>{passwordStrength}</span>
+              </div>
+              <div className="password-strength-bars" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </div>
+              <ul>
+                <li className={passwordRules.length ? "passed" : ""}>
+                  8–29 characters
+                </li>
+                <li className={passwordRules.uppercase ? "passed" : ""}>
+                  One uppercase letter
+                </li>
+                <li className={passwordRules.lowercase ? "passed" : ""}>
+                  One lowercase letter
+                </li>
+                <li className={passwordRules.number ? "passed" : ""}>
+                  One number
+                </li>
+                <li className={passwordRules.special ? "passed" : ""}>
+                  One special character
+                </li>
+              </ul>
+            </div>
+            <div className="password-field">
+              <input
+                id="confirm-password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                type={showConfirmPassword ? "text" : "password"}
+                placeholder="Confirm password"
+                minLength={8}
+                maxLength={29}
+                autoComplete="new-password"
+                aria-invalid={confirmPassword.length > 0 && !passwordsMatch}
+                required
+              />
+              <button
+                className="password-toggle"
+                type="button"
+                onClick={() =>
+                  setShowConfirmPassword((current) => !current)
+                }
+                aria-label={
+                  showConfirmPassword
+                    ? "Hide confirmation password"
+                    : "Show confirmation password"
+                }
+                aria-controls="confirm-password"
+                aria-pressed={showConfirmPassword}
+              >
+                <PasswordVisibilityIcon visible={showConfirmPassword} />
+              </button>
+            </div>
+            {confirmPassword.length > 0 && (
+              <p
+                className={`password-confirmation ${passwordsMatch ? "matched" : "mismatched"}`}
+              >
+                {passwordsMatch
+                  ? "Passwords match."
+                  : "Passwords do not match."}
+              </p>
+            )}
+          </>
+        )}
         {error && <p className="error">{error}</p>}
-        <button type="submit" disabled={mutation.isPending}>
+        <button
+          type="submit"
+          disabled={
+            mutation.isPending ||
+            (mode === "register" &&
+              (passwordStrength !== "strong" || !passwordsMatch))
+          }
+        >
           {mutation.isPending
             ? "Please wait..."
             : mode === "login"
@@ -123,18 +460,46 @@ function Auth() {
         </button>
         <button
           type="button"
-          className="ghost"
+          className="ghost auth-switch"
           onClick={() => {
             setError("");
+            setConfirmPassword("");
+            setShowPassword(false);
+            setShowConfirmPassword(false);
             setMode((current) => (current === "login" ? "register" : "login"));
           }}
         >
-          {mode === "login"
-            ? "Need an account? Register"
-            : "Already registered? Sign in"}
+          {mode === "login" ? (
+            <>
+              <span>Need an account?</span> <strong>Register</strong>
+            </>
+          ) : (
+            <>
+              <span>Already registered?</span> <strong>Login</strong>
+            </>
+          )}
         </button>
       </form>
     </main>
+  );
+}
+
+function PasswordVisibilityIcon({
+  visible,
+}: {
+  visible: boolean;
+}) {
+  return visible ? (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+      <circle cx="12" cy="12" r="2.75" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 5 20 19" />
+      <path d="M9.6 6.4A10.4 10.4 0 0 1 12 6c6 0 9.5 6 9.5 6a16.8 16.8 0 0 1-3 3.6M6.2 8.1A17 17 0 0 0 2.5 12s3.5 6 9.5 6c1.1 0 2.1-.2 3-.5" />
+      <path d="M10.2 10.2a2.75 2.75 0 0 0 3.6 3.6" />
+    </svg>
   );
 }
 
@@ -489,7 +854,11 @@ function Chat({
         >
           ⚙ Settings
         </button>
-        <button onClick={() => logout().then(() => location.reload())}>
+        <button
+          onClick={() =>
+            logout().then(() => queryClient.setQueryData(["me"], null))
+          }
+        >
           Sign out
         </button>
       </aside>
@@ -791,7 +1160,9 @@ function SettingsPage({
  onBack: () => void
 }) {
   const queryClient = useQueryClient();
-  const [name, setName] = useState(user.name);
+  const [firstName, setFirstName] = useState(user.firstName);
+  const [lastName, setLastName] = useState(user.lastName ?? "");
+  const [username, setUsername] = useState(user.username);
   const [avatar, setAvatar] = useState<File | null>(null);
   const [preview, setPreview] = useState(avatarUrl(user.avatarUrl));
   const [progress, setProgress] = useState(0);
@@ -813,10 +1184,16 @@ function SettingsPage({
       setError("");
       setSuccess("");
       let updated = user;
-      if (name.trim() !== user.name)
+      const profileChanged =
+        firstName.trim() !== user.firstName ||
+        lastName.trim() !== (user.lastName ?? "") ||
+        username.trim().toLowerCase() !== user.username;
+      if (profileChanged)
         updated = (
           await updateCurrentUser({
-            name: name.trim(),
+            firstName: firstName.trim(),
+            lastName: lastName.trim(),
+            username: username.trim(),
           })
         ).user;
       if (avatar) updated = (await uploadAvatar(avatar, setProgress)).user;
@@ -866,7 +1243,7 @@ function SettingsPage({
             {preview ? (
               <img src={preview} alt="Avatar preview" />
             ) : (
-              name[0]?.toUpperCase()
+              firstName[0]?.toUpperCase()
             )}
           </span>
           <div>
@@ -913,15 +1290,36 @@ function SettingsPage({
             <progress className="avatar-progress" max="100" value={progress} />
           )}
           <label className="settings-field">
-            <span>Username</span>
+            <span>First name</span>
             <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
+              value={firstName}
+              onChange={(event) => setFirstName(event.target.value)}
               minLength={2}
-              maxLength={80}
+              maxLength={100}
               required
             />
-            <small>This name is visible to people you chat with.</small>
+          </label>
+          <label className="settings-field">
+            <span>Last name (optional)</span>
+            <input
+              value={lastName}
+              onChange={(event) => setLastName(event.target.value)}
+              minLength={2}
+              maxLength={100}
+            />
+          </label>
+          <label className="settings-field">
+            <span>Username</span>
+            <input
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              minLength={5}
+              maxLength={30}
+              pattern="[A-Za-z0-9._]+"
+              title="Use letters, numbers, periods, or underscores."
+              required
+            />
+            <small>Your username is unique and visible to other users.</small>
           </label>
           <label className="settings-field">
             <span>Email</span>
@@ -935,8 +1333,12 @@ function SettingsPage({
             type="submit"
             disabled={
               save.isPending ||
-              (!avatar && name.trim() === user.name) ||
-              name.trim().length < 2
+              (!avatar &&
+                firstName.trim() === user.firstName &&
+                lastName.trim() === (user.lastName ?? "") &&
+                username.trim().toLowerCase() === user.username) ||
+              firstName.trim().length < 2 ||
+              username.trim().length < 5
             }
           >
             {save.isPending ? "Saving..." : "Save changes"}

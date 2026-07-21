@@ -1,6 +1,6 @@
 import type { Server, Socket } from "socket.io";
 import { CallService } from "../services/call.service";
-import { redis } from "../lib/redis";
+import { isRedisAvailable, redis } from "../lib/redis";
 
 const calls = new CallService();
 const ACTIVE_TTL = 4 * 60 * 60;
@@ -15,6 +15,8 @@ async function cacheActive(call: {
   callerId: string;
   receiverId: string;
 }) {
+  if (!isRedisAvailable()) return;
+
   await redis
     .multi()
     .set(`call:active:${call.id}`, JSON.stringify(call), "EX", ACTIVE_TTL)
@@ -28,6 +30,8 @@ async function clearActive(call: {
   callerId: string;
   receiverId: string;
 }) {
+  if (!isRedisAvailable()) return;
+
   await redis.del(
     `call:active:${call.id}`,
     `user:${call.callerId}:active-call`,

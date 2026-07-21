@@ -2,6 +2,7 @@ import type { RequestHandler } from "express";
 import { AuthService } from "../services/auth.service";
 import { ok } from "../utils/api-response";
 import { tokenCookieName } from "../utils/token";
+import { AppError } from "../utils/app-error";
 const service = new AuthService();
 const opts = {
   httpOnly: true,
@@ -33,11 +34,30 @@ const set = (res: any, s: any, status = 200) => {
   );
 };
 export const register: RequestHandler = async (req, res) =>
-  set(res, await service.register(req.body, meta(req)), 201);
+  ok(
+    res,
+    await service.register(req.body, meta(req)),
+    "Account created. Enter the code sent to your email.",
+    201,
+  );
+export const verifyEmail: RequestHandler = async (req, res) =>
+  set(res, await service.verifyEmail(req.body.email, req.body.code, meta(req)));
+export const resendVerification: RequestHandler = async (req, res) => {
+  await service.resendVerification(req.body.email);
+  return ok(
+    res,
+    null,
+    "If the account is awaiting verification, a new code has been sent.",
+  );
+};
 export const login: RequestHandler = async (req, res) =>
   set(res, await service.login(req.body, meta(req)));
-export const refresh: RequestHandler = async (req, res) =>
-  set(res, await service.refresh(req.cookies.refresh_token, meta(req)));
+export const refresh: RequestHandler = async (req, res) => {
+  const refreshToken = req.cookies?.refresh_token;
+  if (!refreshToken)
+    throw new AppError("Refresh session is missing.", 401);
+  return set(res, await service.refresh(refreshToken, meta(req)));
+};
 export const logout: RequestHandler = (_req, res) => {
   res.clearCookie(tokenCookieName, opts).clearCookie("refresh_token", opts);
   return ok(res, null, "Signed out.");

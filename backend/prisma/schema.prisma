@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "mysql"
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -71,34 +72,51 @@ enum CallStatus {
 }
 
 model User {
-  id               String               @id @default(cuid())
-  email            String               @unique @db.VarChar(191)
-  passwordHash     String
-  name             String               @db.VarChar(80)
-  avatarUrl        String?              @db.VarChar(500)
-  avatarMimeType   String?              @db.VarChar(120)
-  avatarSize       Int?
-  privacy          Json?
-  role             Role                 @default(USER)
-  lastSeenAt       DateTime?
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-  refreshTokens    RefreshToken[]
-  passwordResets   PasswordResetToken[]
-  sentFriends      Friend[]             @relation("FriendSender")
-  receivedFriends  Friend[]             @relation("FriendReceiver")
-  participants     Participant[]
-  messages         Message[]
-  messageReactions MessageReaction[]
-  attachments      Attachment[]
-  notifications    Notification[]
-  blockedUsers     Block[]              @relation("Blocker")
-  blockedBy        Block[]              @relation("Blocked")
-  outgoingCalls    Call[]               @relation("CallCaller")
-  incomingCalls    Call[]               @relation("CallReceiver")
-  callParticipants CallParticipant[]
+  id                 String                   @id @default(cuid())
+  firstName          String                   @db.VarChar(100)
+  lastName           String?                  @db.VarChar(100)
+  username           String                   @unique @db.VarChar(30)
+  email              String                   @unique @db.VarChar(191)
+  passwordHash       String
+  avatarUrl          String?                  @db.VarChar(500)
+  avatarMimeType     String?                  @db.VarChar(120)
+  avatarSize         Int?
+  privacy            Json?
+  role               Role                     @default(USER)
+  emailVerifiedAt    DateTime?
+  lastSeenAt         DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  refreshTokens      RefreshToken[]
+  passwordResets     PasswordResetToken[]
+  emailVerifications EmailVerificationToken[]
+  sentFriends        Friend[]                 @relation("FriendSender")
+  receivedFriends    Friend[]                 @relation("FriendReceiver")
+  participants       Participant[]
+  messages           Message[]
+  messageReactions   MessageReaction[]
+  attachments        Attachment[]
+  notifications      Notification[]
+  blockedUsers       Block[]                  @relation("Blocker")
+  blockedBy          Block[]                  @relation("Blocked")
+  outgoingCalls      Call[]                   @relation("CallCaller")
+  incomingCalls      Call[]                   @relation("CallReceiver")
+  callParticipants   CallParticipant[]
 
-  @@index([name])
+  @@index([firstName, lastName])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String    @db.Char(64)
+  attempts  Int       @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
 }
 
 model Block {
