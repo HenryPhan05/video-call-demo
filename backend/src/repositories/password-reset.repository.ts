@@ -1,0 +1,2 @@
+import { prisma } from '../lib/prisma';
+export class PasswordResetRepository { create(userId:string,tokenHash:string,expiresAt:Date){return prisma.passwordResetToken.create({data:{userId,tokenHash,expiresAt}})} find(tokenHash:string){return prisma.passwordResetToken.findFirst({where:{tokenHash,usedAt:null,expiresAt:{gt:new Date()}}})} use(id:string){return prisma.passwordResetToken.update({where:{id},data:{usedAt:new Date()}})} }

@@ -1,0 +1,11 @@
+{
+  "name": "realtime-chat-learning-project",
+  "private": true,
+  "workspaces": ["backend", "frontend"],
+  "scripts": {
+    "dev:backend": "npm run dev --workspace=@chat/backend",
+    "dev:frontend": "npm run dev --workspace=@chat/frontend",
+    "build": "npm run build --workspaces",
+    "lint": "npm run lint --workspaces"
+  }
+}
