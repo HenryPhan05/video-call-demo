@@ -37,7 +37,7 @@ export class AuthService {
     if (existingUser) {
       if (existingUser.emailVerifiedAt)
         throw new AppError("An account with this email already exists.", 409);
-      await this.issueVerificationCode(existingUser.id, existingUser.email, true);
+      await this.issueVerificationCode(existingUser.id, existingUser.email, false);
       return {
         verificationRequired: true as const,
         email: existingUser.email,
@@ -184,7 +184,7 @@ export class AuthService {
       const latest = await emailVerifications.latestForUser(userId);
       if (latest && Date.now() - latest.createdAt.getTime() < 60_000)
         throw new AppError(
-          "Please wait one minute before requesting another code.",
+          "Too many requests, please wait to try again.",
           429,
         );
     }
@@ -193,11 +193,18 @@ export class AuthService {
     const expiresAt = new Date(
       Date.now() + env.emailVerificationCodeTtlMinutes * 60_000,
     );
-    await emailVerifications.replaceCode(
+    const verification = await emailVerifications.replaceCode(
       userId,
       verificationHash(userId, code),
       expiresAt,
     );
-    await emailService.sendVerificationCode(email, code);
+    try {
+      await emailService.sendVerificationCode(email, code);
+    } catch (cause) {
+      await emailVerifications.invalidate(verification.id).catch((error) => {
+        console.error("Unable to invalidate an undelivered verification code.", error);
+      });
+      throw cause;
+    }
   }
 }

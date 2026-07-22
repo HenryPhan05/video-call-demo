@@ -1,4 +1,11 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import {
+  FormEvent,
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { io, Socket } from "socket.io-client";
 import axios from "axios";
@@ -32,6 +39,8 @@ import { AttachmentMessage } from "./components/chat/AttachmentMessage";
 import { VoiceRecorder } from "./components/chat/VoiceRecorder";
 import { CallManager } from "./components/chat/CallManager";
 
+const AuthBackground = lazy(() => import("./components/auth/AuthBackground"));
+
 const SOCKET_URL = "http://localhost:4000";
 const avatarUrl = (url?: string | null) => (url ? `${SOCKET_URL}${url}` : "");
 
@@ -40,10 +49,15 @@ export function App() {
     queryKey: ["me"],
     queryFn: getMe,
     retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
   if (me.isLoading)
     return (
       <main className="auth">
+        <Suspense fallback={null}>
+          <AuthBackground />
+        </Suspense>
         <h1>Chatting</h1>
         <p>Loading...</p>
       </main>
@@ -53,13 +67,32 @@ export function App() {
 
 function Auth() {
   const queryClient = useQueryClient();
+  const authModeKey = "chatting.auth-mode";
+  const registrationDraftKey = "chatting.registration-draft";
   const pendingEmailKey = "chatting.pending-verification-email";
   const resendDeadlineKey = "chatting.resend-available-at";
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [username, setUsername] = useState("");
-  const [email, setEmail] = useState("");
+  const [mode, setMode] = useState<"login" | "register">(() =>
+    sessionStorage.getItem(authModeKey) === "register" ? "register" : "login",
+  );
+  const [registrationDraft] = useState<{
+    firstName?: string;
+    lastName?: string;
+    username?: string;
+    email?: string;
+  }>(() => {
+    try {
+      return JSON.parse(
+        sessionStorage.getItem(registrationDraftKey) ?? "{}",
+      );
+    } catch {
+      sessionStorage.removeItem(registrationDraftKey);
+      return {};
+    }
+  });
+  const [firstName, setFirstName] = useState(registrationDraft.firstName ?? "");
+  const [lastName, setLastName] = useState(registrationDraft.lastName ?? "");
+  const [username, setUsername] = useState(registrationDraft.username ?? "");
+  const [email, setEmail] = useState(registrationDraft.email ?? "");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -95,6 +128,19 @@ function Auth() {
         : "weak";
   const passwordsMatch =
     confirmPassword.length > 0 && password === confirmPassword;
+
+  useEffect(() => {
+    sessionStorage.setItem(authModeKey, mode);
+    sessionStorage.setItem(
+      registrationDraftKey,
+      JSON.stringify({ firstName, lastName, username, email }),
+    );
+  }, [email, firstName, lastName, mode, username]);
+
+  const clearRegistrationSession = () => {
+    sessionStorage.removeItem(authModeKey);
+    sessionStorage.removeItem(registrationDraftKey);
+  };
 
   const rememberVerificationEmail = (value: string) => {
     sessionStorage.setItem(pendingEmailKey, value);
@@ -155,6 +201,7 @@ function Auth() {
     },
     onSuccess: (response) => {
       if (response.kind === "login") {
+        clearRegistrationSession();
         queryClient.setQueryData(["me"], response.result);
         return;
       }
@@ -190,6 +237,7 @@ function Auth() {
       }),
     onSuccess: (response) => {
       clearPendingVerification();
+      clearRegistrationSession();
       queryClient.setQueryData(["me"], response);
     },
     onError: (cause) => {
@@ -217,18 +265,31 @@ function Auth() {
     },
   });
 
+  const handleAuthSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (mutation.isPending) return;
+    setError("");
+    mutation.mutate();
+  };
+
+  const handleVerificationSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (verificationMutation.isPending) return;
+    setError("");
+    verificationMutation.mutate();
+  };
+
   if (verificationEmail)
     return (
       <main className="auth">
+        <Suspense fallback={null}>
+          <AuthBackground />
+        </Suspense>
         <h1>Chatting</h1>
         <h2>Verify your email</h2>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            setError("");
-            verificationMutation.mutate();
-          }}
-        >
+        <form onSubmit={handleVerificationSubmit}>
           <p className="verification-help">
             Enter the code sent to <strong>{verificationEmail}</strong>.
           </p>
@@ -285,6 +346,7 @@ function Auth() {
             className="ghost"
             onClick={() => {
               clearPendingVerification();
+              clearRegistrationSession();
               setVerificationCode("");
               setVerificationMessage("");
               setError("");
@@ -299,17 +361,16 @@ function Auth() {
 
   return (
     <main className="auth">
+      <Suspense fallback={null}>
+        <AuthBackground />
+      </Suspense>
       <h1>Chatting</h1>
       <h2>{mode === "login" ? "Sign in" : "Register"}</h2>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          mutation.mutate();
-        }}
-      >
+      <form onSubmit={handleAuthSubmit}>
         {mode === "register" && (
           <>
             <input
+              name="firstName"
               value={firstName}
               onChange={(event) => setFirstName(event.target.value)}
               placeholder="First name"
@@ -319,6 +380,7 @@ function Auth() {
               required
             />
             <input
+              name="lastName"
               value={lastName}
               onChange={(event) => setLastName(event.target.value)}
               placeholder="Last name (optional)"
@@ -327,6 +389,7 @@ function Auth() {
               autoComplete="family-name"
             />
             <input
+              name="username"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
               placeholder="Username"
@@ -340,6 +403,7 @@ function Auth() {
           </>
         )}
         <input
+          name="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           type="email"
@@ -350,6 +414,7 @@ function Auth() {
         <div className="password-field">
           <input
             id="password"
+            name="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             type={showPassword ? "text" : "password"}
@@ -405,6 +470,7 @@ function Auth() {
             <div className="password-field">
               <input
                 id="confirm-password"
+                name="confirmPassword"
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
                 type={showConfirmPassword ? "text" : "password"}
@@ -463,7 +529,6 @@ function Auth() {
           className="ghost auth-switch"
           onClick={() => {
             setError("");
-            setConfirmPassword("");
             setShowPassword(false);
             setShowConfirmPassword(false);
             setMode((current) => (current === "login" ? "register" : "login"));

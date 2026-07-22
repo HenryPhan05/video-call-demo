@@ -74,7 +74,7 @@ The backend is located in [`backend/`](backend/) and uses:
 | JSON Web Token          | Access-token authentication                                                     |
 | bcryptjs                | Password hashing                                                                |
 | Multer                  | Avatar and chat attachment uploads                                              |
-| Resend                  | HTTPS API delivery of account verification codes                                |
+| Gmail API               | OAuth 2.0 HTTPS delivery of account verification codes                          |
 | Zod                     | API request validation                                                          |
 | Helmet                  | Security-related HTTP headers                                                   |
 | express-rate-limit      | Authentication endpoint rate limiting                                           |
@@ -100,7 +100,7 @@ Yes, Chatting uses JWT authentication.
 - Zod validates supported request bodies.
 - Helmet, CORS, JSON size limits, and authentication rate limiting protect the HTTP layer.
 
-Verification email is delivered through Resend when `EMAIL_PROVIDER=resend` and `RESEND_API_KEY` is configured. Without a Resend key, development mode writes the verification code to the backend terminal so local testing remains possible; production rejects registration if email delivery is not configured. The forgot-password delivery remains mocked locally and writes its reset token to the backend console.
+Verification email is delivered through the Gmail HTTPS API using the least-privilege `gmail.send` OAuth scope. The backend exchanges the stored refresh token for short-lived access tokens and never stores a Gmail password. Registration returns a configuration error when any Gmail OAuth value is missing, so the UI never falsely claims that an email was sent. The forgot-password delivery remains mocked locally and writes its reset token to the backend console.
 
 ## Database and Prisma
 
@@ -218,9 +218,11 @@ CLIENT_ORIGIN=http://localhost:5173
 DATABASE_URL="mysql://chatter:chatter_dev_password@localhost:3307/chatter"
 REDIS_URL=redis://localhost:6379
 JWT_SECRET=replace-this-with-a-long-random-secret
-EMAIL_PROVIDER=resend
-RESEND_API_KEY=re_your_api_key
-RESEND_FROM="chatting@noreply <onboarding@resend.dev>"
+GMAIL_CLIENT_ID=your_google_oauth_client_id
+GMAIL_CLIENT_SECRET=your_google_oauth_client_secret
+GMAIL_REFRESH_TOKEN=your_google_oauth_refresh_token
+GMAIL_SENDER_EMAIL=your-sender@gmail.com
+GMAIL_SENDER_NAME=Chatting
 EMAIL_VERIFICATION_CODE_TTL_MINUTES=10
 ACCESS_TOKEN_TTL=15m
 REFRESH_TOKEN_TTL_DAYS=7
@@ -230,6 +232,19 @@ TURN_URL=
 TURN_USERNAME=
 TURN_PASSWORD=
 ```
+
+### Gmail API setup
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project. Open **APIs & Services > Library**, find **Gmail API**, and enable it.
+2. Open **Google Auth Platform**. Configure the app name and support email, choose an **External** audience, keep the app in **Testing**, and add the Gmail sender as a test user.
+3. Under **Data Access**, add only `https://www.googleapis.com/auth/gmail.send`.
+4. Under **Clients**, create an OAuth client of type **Web application**. Add `https://developers.google.com/oauthplayground` as an authorized redirect URI. Copy the client ID and client secret.
+5. Open [OAuth 2.0 Playground](https://developers.google.com/oauthplayground). In its settings, enable **Use your own OAuth credentials** and enter that client ID and secret.
+6. In Playground step 1, authorize `https://www.googleapis.com/auth/gmail.send` while signed in as the sender Gmail account. In step 2, exchange the authorization code for tokens and copy the refresh token.
+7. Put the client ID, client secret, refresh token, and sender email into `backend/.env`. The sender email must be the same Google account that granted consent.
+8. Restart the backend. If an account is already awaiting verification, click **Resend code** once after the cooldown.
+
+Never commit OAuth credentials. While an External OAuth app remains in Testing, Google can expire refresh tokens after seven days; generate a new refresh token or publish the consent configuration when appropriate.
 
 TURN is optional for basic local testing but recommended in production because some networks cannot establish a direct WebRTC connection.
 

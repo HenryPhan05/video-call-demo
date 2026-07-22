@@ -23,21 +23,11 @@ export const env = {
   port: getPort(process.env.PORT),
   clientOrigin: process.env.CLIENT_ORIGIN ?? "http://localhost:5173",
   jwtSecret: process.env.JWT_SECRET ?? "local-development-secret-change-me",
-  emailProvider:
-    process.env.EMAIL_PROVIDER ??
-    (process.env.RESEND_API_KEY ? "resend" : "smtp"),
-  resendApiKey: process.env.RESEND_API_KEY,
-  resendFrom:
-    process.env.RESEND_FROM ?? "chatting@noreply <onboarding@resend.dev>",
-  smtpHost: process.env.SMTP_HOST,
-  smtpPort: getPositiveInteger(process.env.SMTP_PORT, 587, "SMTP_PORT"),
-  smtpSecure: process.env.SMTP_SECURE === "true",
-  smtpUser: process.env.SMTP_USER,
-  smtpPass:
-    process.env.SMTP_HOST === "smtp.gmail.com"
-      ? process.env.SMTP_PASS?.replace(/\s+/g, "")
-      : process.env.SMTP_PASS,
-  emailFrom: process.env.EMAIL_FROM ?? "Chatting <no-reply@localhost>",
+  gmailClientId: process.env.GMAIL_CLIENT_ID,
+  gmailClientSecret: process.env.GMAIL_CLIENT_SECRET,
+  gmailRefreshToken: process.env.GMAIL_REFRESH_TOKEN,
+  gmailSenderEmail: process.env.GMAIL_SENDER_EMAIL,
+  gmailSenderName: process.env.GMAIL_SENDER_NAME ?? "Chatting",
   emailVerificationCodeTtlMinutes: getPositiveInteger(
     process.env.EMAIL_VERIFICATION_CODE_TTL_MINUTES,
     10,

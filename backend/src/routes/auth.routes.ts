@@ -14,6 +14,16 @@ import {
   resendVerificationSchema,
 } from "../validators/auth.validators";
 export const authRouter = Router();
+const registerLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many requests, please wait to try again.",
+  },
+});
 const verificationLimiter = rateLimit({
   windowMs: 15 * 60_000,
   max: 10,
@@ -36,6 +46,7 @@ const resendLimiter = rateLimit({
 });
 authRouter.post(
   "/register",
+  registerLimiter,
   validate(registerSchema),
   asyncHandler(c.register),
 );
