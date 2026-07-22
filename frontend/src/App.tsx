@@ -52,6 +52,17 @@ type NavigateOptions = {
 };
 
 type Navigate = (path: string, options?: NavigateOptions) => void;
+type Theme = "light" | "dark";
+
+const themeStorageKey = "chatting.theme";
+
+const initialTheme = (): Theme => {
+  const saved = localStorage.getItem(themeStorageKey);
+  if (saved === "light" || saved === "dark") return saved;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+};
 
 const normalizePath = (path: string) => {
   const normalized = path.replace(/\/+$/, "");
@@ -104,6 +115,7 @@ export function App() {
   const toastTimer = useRef<number | null>(null);
   const [routeReady, setRouteReady] = useState(false);
   const [successToast, setSuccessToast] = useState("");
+  const [theme, setTheme] = useState<Theme>(initialTheme);
   const me = useQuery({
     queryKey: ["me"],
     queryFn: getMe,
@@ -128,6 +140,16 @@ export function App() {
     },
     [],
   );
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    localStorage.setItem(themeStorageKey, theme);
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((current) => (current === "dark" ? "light" : "dark"));
+  }, []);
 
   const showSuccessToast = useCallback((message: string) => {
     if (toastTimer.current !== null)
@@ -159,7 +181,13 @@ export function App() {
   return (
     <>
       {me.data ? (
-        <Chat user={me.data.user} path={path} navigate={navigate} />
+        <Chat
+          user={me.data.user}
+          path={path}
+          navigate={navigate}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+        />
       ) : (
         <Auth
           path={path}
@@ -1116,14 +1144,52 @@ function PasswordVisibilityIcon({
   );
 }
 
+function ThemeIcon({
+  theme,
+}: {
+  theme: Theme;
+}) {
+  return theme === "dark" ? (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.66 6.34l1.41-1.41" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20.2 15.2A8.4 8.4 0 0 1 8.8 3.8 8.5 8.5 0 1 0 20.2 15.2Z" />
+    </svg>
+  );
+}
+
+function SettingsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.64 5.64l1.42 1.42M16.94 16.94l1.42 1.42M5.64 18.36l1.42-1.42M16.94 7.06l1.42-1.42" />
+    </svg>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  );
+}
+
 function Chat({
   user,
   path,
   navigate,
+  theme,
+  onToggleTheme,
 }: {
   user: User;
   path: string;
   navigate: Navigate;
+  theme: Theme;
+  onToggleTheme: () => void;
 }) {
   const queryClient = useQueryClient();
   const socketRef = useRef<Socket | null>(null);
@@ -1417,6 +1483,15 @@ function Chat({
       <aside>
         <div className="sidebar-top">
           <p className="brand">CHATTING</p>
+          <button
+            className="theme-toggle"
+            type="button"
+            onClick={onToggleTheme}
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+            title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+          >
+            <ThemeIcon theme={theme} />
+          </button>
         </div>
         <button
           className="profile profile-button"
@@ -1495,7 +1570,8 @@ function Chat({
             navigate("/settings");
           }}
         >
-          ⚙ Settings
+          <SettingsIcon />
+          <span className="settings-link-label">Settings</span>
         </button>
         <button
           onClick={() => {
@@ -1888,7 +1964,7 @@ function SettingsPage({
     <main className="settings-page">
       <header className="settings-header">
         <button type="button" onClick={onBack} aria-label="Back to messages">
-          ←
+          <BackIcon />
         </button>
         <div>
           <h2>Settings</h2>

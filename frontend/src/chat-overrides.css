@@ -19,12 +19,53 @@
 }
 
 .chat .sidebar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   padding: 0 8px 14px;
 }
 .chat .brand {
   color: #0866ff;
   font-size: 1.45rem;
   letter-spacing: -0.03em;
+}
+
+.theme-toggle {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: #172033;
+  background: #f0f2f5;
+  border: 1px solid #e4e6eb;
+  border-radius: 50%;
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.08);
+  transition:
+    color 180ms ease,
+    background 180ms ease,
+    border-color 180ms ease,
+    transform 180ms ease;
+}
+.theme-toggle:hover {
+  color: #0866ff;
+  background: #e7f3ff;
+  transform: translateY(-1px) rotate(8deg);
+}
+.theme-toggle:focus-visible {
+  outline: 3px solid rgba(8, 102, 255, 0.3);
+  outline-offset: 2px;
+}
+.theme-toggle svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
 }
 
 .chat .profile {
@@ -124,6 +165,16 @@
 .chat > aside > .settings-link.active {
   color: #0866ff;
   background: #e7f3ff;
+}
+.chat > aside > .settings-link svg {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .chat > aside > button:last-child {
@@ -691,6 +742,24 @@
   background: #e7f3ff;
   border-radius: 50%;
   font-size: 1.15rem;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+.settings-header > button:hover {
+  color: #054fbf;
+  background: #d8ebff;
+  transform: translateX(-2px);
+}
+.settings-header > button svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .settings-header h2 {
   margin: 0;
@@ -966,6 +1035,186 @@
   background: #31a24c;
 }
 
+/* Complete dark palette for the authenticated application shell. */
+:root[data-theme="dark"] .chat {
+  color: #f8fafc;
+  background: #080d18;
+}
+:root[data-theme="dark"] .chat > aside {
+  background: #0f172a;
+  border-right-color: #263247;
+}
+:root[data-theme="dark"] .chat .brand {
+  color: #7db2ff;
+}
+:root[data-theme="dark"] .theme-toggle {
+  color: #fde68a;
+  background: #172033;
+  border-color: #334155;
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.24);
+}
+:root[data-theme="dark"] .theme-toggle:hover {
+  color: #fef3c7;
+  background: #24324a;
+}
+:root[data-theme="dark"] .chat .profile,
+:root[data-theme="dark"] .chat > aside > label input,
+:root[data-theme="dark"] .chat > aside > button:last-child {
+  color: #f8fafc;
+  background: #172033;
+}
+:root[data-theme="dark"] .profile-button:hover,
+:root[data-theme="dark"] .chat .conversation:hover {
+  background: #1d293d;
+}
+:root[data-theme="dark"] .chat > aside > label,
+:root[data-theme="dark"] .chat .section-label,
+:root[data-theme="dark"] .chat .conversation small,
+:root[data-theme="dark"] .chat > aside > button:last-child {
+  color: #94a3b8;
+}
+:root[data-theme="dark"] .chat .conversation,
+:root[data-theme="dark"] .chat > aside > .settings-link {
+  color: #e5edf8;
+}
+:root[data-theme="dark"] .chat .conversation.active,
+:root[data-theme="dark"] .chat > aside > .settings-link:hover,
+:root[data-theme="dark"] .chat > aside > .settings-link.active {
+  color: #8bbcff;
+  background: #172d4d;
+}
+:root[data-theme="dark"] .thread,
+:root[data-theme="dark"] .messages,
+:root[data-theme="dark"] .composer,
+:root[data-theme="dark"] .empty {
+  color: #f8fafc;
+  background: #080d18;
+}
+:root[data-theme="dark"] .chat-header {
+  background: rgba(15, 23, 42, 0.94);
+  border-bottom-color: #263247;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.22);
+}
+:root[data-theme="dark"] .chat-header h2 {
+  color: #f8fafc;
+}
+:root[data-theme="dark"] .message.theirs,
+:root[data-theme="dark"] .typing-indicator {
+  color: #f1f5f9;
+  background: #1e293b;
+}
+:root[data-theme="dark"] .typing-indicator {
+  color: #aebdd0;
+}
+:root[data-theme="dark"] .typing-indicator span {
+  background: #94a3b8;
+}
+:root[data-theme="dark"] .message.theirs .reply-quote {
+  background: rgba(255, 255, 255, 0.07);
+}
+:root[data-theme="dark"] .message-actions button {
+  background: rgba(255, 255, 255, 0.1);
+}
+:root[data-theme="dark"] .reaction-summary span,
+:root[data-theme="dark"] .reaction-people {
+  color: #f8fafc;
+  background: #172033;
+  border-color: #334155;
+}
+:root[data-theme="dark"] .reaction-people {
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.34);
+}
+:root[data-theme="dark"] .composer > input,
+:root[data-theme="dark"] .composer-context,
+:root[data-theme="dark"] .attachment-preview,
+:root[data-theme="dark"] .media-loading,
+:root[data-theme="dark"] .document-card {
+  color: #f8fafc;
+  background: #172033;
+  border-color: #334155;
+}
+:root[data-theme="dark"] .composer > input::placeholder {
+  color: #7f8da3;
+}
+:root[data-theme="dark"] .composer-context button {
+  color: #cbd5e1;
+  background: #263247;
+}
+:root[data-theme="dark"] .attachment-preview small,
+:root[data-theme="dark"] .document-card small,
+:root[data-theme="dark"] .media-loading,
+:root[data-theme="dark"] .empty {
+  color: #94a3b8;
+}
+:root[data-theme="dark"] .attach-button,
+:root[data-theme="dark"] .voice-recorder > button,
+:root[data-theme="dark"] .document-icon,
+:root[data-theme="dark"] .download-button,
+:root[data-theme="dark"] .call-launcher button {
+  color: #8bbcff;
+  background: #172d4d;
+}
+:root[data-theme="dark"] .settings-page {
+  color: #f8fafc;
+  background: #080d18;
+}
+:root[data-theme="dark"] .settings-header,
+:root[data-theme="dark"] .settings-card {
+  background: #0f172a;
+  border-color: #263247;
+}
+:root[data-theme="dark"] .settings-header > button {
+  color: #8bbcff;
+  background: #172d4d;
+}
+:root[data-theme="dark"] .settings-header > button:hover {
+  color: #dbeafe;
+  background: #234269;
+}
+:root[data-theme="dark"] .settings-card {
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.25);
+}
+:root[data-theme="dark"] .settings-avatar {
+  border-bottom-color: #263247;
+}
+:root[data-theme="dark"] .settings-header p,
+:root[data-theme="dark"] .settings-avatar p,
+:root[data-theme="dark"] .settings-field small {
+  color: #94a3b8;
+}
+:root[data-theme="dark"] .settings-field {
+  color: #e5edf8;
+}
+:root[data-theme="dark"] .settings-field input {
+  color: #f8fafc;
+  background: #172033;
+  border-color: #263247;
+}
+:root[data-theme="dark"] .settings-field input:focus {
+  background: #1d293d;
+  border-color: #5b9dff;
+}
+:root[data-theme="dark"] .settings-field input:disabled {
+  color: #7f8da3;
+}
+
+.chat,
+.chat > aside,
+.thread,
+.messages,
+.composer,
+.chat-header,
+.settings-page,
+.settings-header,
+.settings-card,
+.message.theirs {
+  transition:
+    color 220ms ease,
+    background-color 220ms ease,
+    border-color 220ms ease,
+    box-shadow 220ms ease;
+}
+
 @media (max-width: 800px) {
   .chat {
     grid-template-columns: 92px minmax(0, 1fr);
@@ -975,10 +1224,16 @@
   }
   .chat .sidebar-top {
     justify-content: center;
+    flex-wrap: wrap;
+    gap: 7px;
     padding: 0 0 10px;
   }
   .chat .brand {
     font-size: 0.8rem;
+  }
+  .theme-toggle {
+    width: 36px;
+    height: 36px;
   }
   .profile {
     justify-content: center;
@@ -998,10 +1253,9 @@
     justify-content: center;
     margin: 8px 2px 4px;
     padding: 10px 4px;
-    font-size: 0;
   }
-  .chat > aside > .settings-link::first-letter {
-    font-size: 1rem;
+  .chat > aside > .settings-link-label {
+    display: none;
   }
   .thread,
   .chat {

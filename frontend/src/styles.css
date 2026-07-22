@@ -8,6 +8,14 @@ body {
   color: #e7e9f5;
   background: #10111a;
 }
+:root[data-theme="light"] body {
+  color: #050505;
+  background: #f0f2f5;
+}
+:root[data-theme="dark"] body {
+  color: #f8fafc;
+  background: #080d18;
+}
 button,
 input {
   font: inherit;
