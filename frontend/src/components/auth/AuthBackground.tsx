@@ -36,9 +36,21 @@ export default function AuthBackground() {
     scene.add(shapeGroup);
 
     const orbSettings = [
-      { color: 0x8b5cf6, position: [-3.2, 1.8, -1], scale: 1.2 },
-      { color: 0x22d3ee, position: [3.4, -1.7, -1.5], scale: 1.55 },
-      { color: 0x6366f1, position: [2.8, 2.4, -2], scale: 0.72 },
+      {
+        color: 0x8b5cf6,
+        position: [-3.2, 1.8, -1],
+        scale: 1.2,
+      },
+      {
+        color: 0x22d3ee,
+        position: [3.4, -1.7, -1.5],
+        scale: 1.55,
+      },
+      {
+        color: 0x6366f1,
+        position: [2.8, 2.4, -2],
+        scale: 0.72,
+      },
     ] as const;
     const orbs = orbSettings.map((settings, index) => {
       const geometry = new THREE.IcosahedronGeometry(1, index === 1 ? 2 : 1);
@@ -95,7 +107,9 @@ export default function AuthBackground() {
         (event.clientY / window.innerHeight - 0.5) * -0.3,
       );
     };
-    window.addEventListener("pointermove", onPointerMove, { passive: true });
+    window.addEventListener("pointermove", onPointerMove, {
+      passive: true,
+    });
 
     const resize = () => {
       const width = Math.max(host.clientWidth, 1);

@@ -84,11 +84,18 @@ const body = <T>(response: {
 }) => response.data.data;
 
 export const getMe = () =>
-  apiClient.get("/users/me").then(
-    body<{
-      user: User;
-    }>,
-  );
+  apiClient
+    .get("/users/me", {
+      // A hard page load must validate the current access-token cookie. If it
+      // has expired, show sign-in instead of silently creating a new access
+      // token from the refresh cookie.
+      skipAuthRefresh: true,
+    })
+    .then(
+      body<{
+        user: User;
+      }>,
+    );
 export const updateCurrentUser = (input: {
   firstName: string;
   lastName: string;

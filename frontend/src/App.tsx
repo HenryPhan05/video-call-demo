@@ -1,4 +1,5 @@
 import {
+  useCallback,
   FormEvent,
   lazy,
   Suspense,
@@ -44,7 +45,61 @@ const AuthBackground = lazy(() => import("./components/auth/AuthBackground"));
 const SOCKET_URL = "http://localhost:4000";
 const avatarUrl = (url?: string | null) => (url ? `${SOCKET_URL}${url}` : "");
 
+type NavigateOptions = {
+  replace?: boolean;
+};
+
+type Navigate = (path: string, options?: NavigateOptions) => void;
+
+const normalizePath = (path: string) => {
+  const normalized = path.replace(/\/+$/, "");
+  return normalized || "/";
+};
+
+const conversationIdFromPath = (path: string) => {
+  const match = normalizePath(path).match(/^\/conversations\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]) : "";
+};
+
+function useAppNavigation() {
+  const [path, setPath] = useState(() => normalizePath(window.location.pathname));
+
+  useEffect(() => {
+    const handlePopState = () =>
+      setPath(normalizePath(window.location.pathname));
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const navigate = useCallback<Navigate>((nextPath, options) => {
+    const normalized = normalizePath(nextPath);
+    if (normalized === normalizePath(window.location.pathname)) {
+      setPath(normalized);
+      return;
+    }
+    window.history[options?.replace ? "replaceState" : "pushState"](
+      {
+        chatting: true,
+      },
+      "",
+      normalized,
+    );
+    setPath(normalized);
+  }, []);
+
+  return {
+    path,
+    navigate,
+  };
+}
+
 export function App() {
+  const {
+    path,
+    navigate,
+  } = useAppNavigation();
+  const initialSessionResolved = useRef(false);
+  const [routeReady, setRouteReady] = useState(false);
   const me = useQuery({
     queryKey: ["me"],
     queryFn: getMe,
@@ -52,7 +107,17 @@ export function App() {
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
-  if (me.isLoading)
+
+  useEffect(() => {
+    if (me.isLoading || initialSessionResolved.current) return;
+    initialSessionResolved.current = true;
+    navigate(me.data ? "/conversations" : "/login", {
+      replace: true,
+    });
+    setRouteReady(true);
+  }, [me.data, me.isLoading, navigate]);
+
+  if (me.isLoading || !routeReady)
     return (
       <main className="auth">
         <Suspense fallback={null}>
@@ -62,17 +127,26 @@ export function App() {
         <p>Loading...</p>
       </main>
     );
-  return me.data ? <Chat user={me.data.user} /> : <Auth />;
+  return me.data ? (
+    <Chat user={me.data.user} path={path} navigate={navigate} />
+  ) : (
+    <Auth path={path} navigate={navigate} />
+  );
 }
 
-function Auth() {
+function Auth({
+  path,
+  navigate,
+}: {
+  path: string;
+  navigate: Navigate;
+}) {
   const queryClient = useQueryClient();
-  const authModeKey = "chatting.auth-mode";
   const registrationDraftKey = "chatting.registration-draft";
   const pendingEmailKey = "chatting.pending-verification-email";
   const resendDeadlineKey = "chatting.resend-available-at";
   const [mode, setMode] = useState<"login" | "register">(() =>
-    sessionStorage.getItem(authModeKey) === "register" ? "register" : "login",
+    path === "/register" ? "register" : "login",
   );
   const [registrationDraft] = useState<{
     firstName?: string;
@@ -130,15 +204,27 @@ function Auth() {
     confirmPassword.length > 0 && password === confirmPassword;
 
   useEffect(() => {
-    sessionStorage.setItem(authModeKey, mode);
     sessionStorage.setItem(
       registrationDraftKey,
-      JSON.stringify({ firstName, lastName, username, email }),
+      JSON.stringify({
+        firstName,
+        lastName,
+        username,
+        email,
+      }),
     );
   }, [email, firstName, lastName, mode, username]);
 
+  useEffect(() => {
+    if (path === "/register") setMode("register");
+    if (path === "/login") setMode("login");
+    if (path === "/verify-email" && !verificationEmail)
+      navigate("/login", {
+        replace: true,
+      });
+  }, [navigate, path, verificationEmail]);
+
   const clearRegistrationSession = () => {
-    sessionStorage.removeItem(authModeKey);
     sessionStorage.removeItem(registrationDraftKey);
   };
 
@@ -184,8 +270,8 @@ function Auth() {
         return {
           kind: "login" as const,
           result: await login({
-          email,
-          password,
+            email,
+            password,
           }),
         };
       return {
@@ -203,9 +289,13 @@ function Auth() {
       if (response.kind === "login") {
         clearRegistrationSession();
         queryClient.setQueryData(["me"], response.result);
+        navigate("/conversations", {
+          replace: true,
+        });
         return;
       }
       rememberVerificationEmail(response.result.email);
+      navigate("/verify-email");
       setVerificationCode("");
       setVerificationMessage("We sent a six-digit code to your email.");
       setError("");
@@ -220,6 +310,7 @@ function Auth() {
         cause.response?.status === 403
       ) {
         rememberVerificationEmail(email.trim().toLowerCase());
+        navigate("/verify-email");
         setVerificationCode("");
         setVerificationMessage("Enter your verification code to continue.");
       }
@@ -239,6 +330,9 @@ function Auth() {
       clearPendingVerification();
       clearRegistrationSession();
       queryClient.setQueryData(["me"], response);
+      navigate("/conversations", {
+        replace: true,
+      });
     },
     onError: (cause) => {
       const message = axios.isAxiosError(cause)
@@ -281,7 +375,7 @@ function Auth() {
     verificationMutation.mutate();
   };
 
-  if (verificationEmail)
+  if (verificationEmail && path === "/verify-email")
     return (
       <main className="auth">
         <Suspense fallback={null}>
@@ -351,6 +445,9 @@ function Auth() {
               setVerificationMessage("");
               setError("");
               setMode("login");
+              navigate("/login", {
+                replace: true,
+              });
             }}
           >
             Back to sign in
@@ -531,7 +628,9 @@ function Auth() {
             setError("");
             setShowPassword(false);
             setShowConfirmPassword(false);
-            setMode((current) => (current === "login" ? "register" : "login"));
+            const nextMode = mode === "login" ? "register" : "login";
+            setMode(nextMode);
+            navigate(`/${nextMode}`);
           }}
         >
           {mode === "login" ? (
@@ -570,14 +669,20 @@ function PasswordVisibilityIcon({
 
 function Chat({
   user,
+  path,
+  navigate,
 }: {
- user: User
+  user: User;
+  path: string;
+  navigate: Navigate;
 }) {
   const queryClient = useQueryClient();
   const socketRef = useRef<Socket | null>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const [conversationId, setConversationId] = useState("");
+  const [conversationId, setConversationId] = useState(() =>
+    conversationIdFromPath(path),
+  );
   const [draft, setDraft] = useState("");
   const [userQuery, setUserQuery] = useState("");
   const [files, setFiles] = useState<File[]>([]);
@@ -589,7 +694,9 @@ function Chat({
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
   const [typingUsers, setTypingUsers] = useState<Record<string, string[]>>({});
-  const [page, setPage] = useState<"chat" | "settings">("chat");
+  const [page, setPage] = useState<"chat" | "settings">(() =>
+    path === "/settings" ? "settings" : "chat",
+  );
   const [socketClient, setSocketClient] = useState<Socket | null>(null);
 
   const conversations = useQuery({
@@ -611,9 +718,23 @@ function Chat({
   );
 
   useEffect(() => {
-    if (!conversationId && conversations.data?.[0])
+    if (path === "/settings") {
+      setPage("settings");
+      return;
+    }
+    setPage("chat");
+    const routeConversationId = conversationIdFromPath(path);
+    if (routeConversationId) setConversationId(routeConversationId);
+  }, [path]);
+
+  useEffect(() => {
+    if (!conversationId && conversations.data?.[0]) {
       setConversationId(conversations.data[0].id);
-  }, [conversations.data, conversationId]);
+      navigate(`/conversations/${encodeURIComponent(conversations.data[0].id)}`, {
+        replace: true,
+      });
+    }
+  }, [conversations.data, conversationId, navigate]);
 
   useEffect(() => {
     const socket = io(SOCKET_URL, {
@@ -718,6 +839,7 @@ function Chat({
         queryKey: ["conversations"],
       });
       setConversationId(conversation.id);
+      navigate(`/conversations/${encodeURIComponent(conversation.id)}`);
     },
   });
 
@@ -850,7 +972,10 @@ function Chat({
         <button
           className="profile profile-button"
           type="button"
-          onClick={() => setPage("settings")}
+          onClick={() => {
+            setPage("settings");
+            navigate("/settings");
+          }}
         >
           <span className="profile-avatar">
             {user.avatarUrl ? (
@@ -896,6 +1021,7 @@ function Chat({
             onClick={() => {
               setPage("chat");
               selectConversation(conversation.id);
+              navigate(`/conversations/${encodeURIComponent(conversation.id)}`);
             }}
             disabled={recordingVoice}
           >
@@ -915,21 +1041,39 @@ function Chat({
         <button
           className={`settings-link ${page === "settings" ? "active" : ""}`}
           type="button"
-          onClick={() => setPage("settings")}
+          onClick={() => {
+            setPage("settings");
+            navigate("/settings");
+          }}
         >
           ⚙ Settings
         </button>
         <button
-          onClick={() =>
-            logout().then(() => queryClient.setQueryData(["me"], null))
-          }
+          onClick={() => {
+            void logout().then(() => {
+              navigate("/login", {
+                replace: true,
+              });
+              queryClient.setQueryData(["me"], null);
+            });
+          }}
         >
           Sign out
         </button>
       </aside>
 
       {page === "settings" ? (
-        <SettingsPage user={user} onBack={() => setPage("chat")} />
+        <SettingsPage
+          user={user}
+          onBack={() => {
+            setPage("chat");
+            navigate(
+              conversationId
+                ? `/conversations/${encodeURIComponent(conversationId)}`
+                : "/conversations",
+            );
+          }}
+        />
       ) : (
         <main className="thread">
           {!conversationId && (

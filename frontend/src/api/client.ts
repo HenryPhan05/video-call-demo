@@ -1,5 +1,11 @@
 import axios, { type InternalAxiosRequestConfig } from "axios";
 
+declare module "axios" {
+  export interface AxiosRequestConfig {
+    skipAuthRefresh?: boolean;
+  }
+}
+
 const API_URL = "http://localhost:4000/api/v1";
 
 export const apiClient = axios.create({
@@ -23,6 +29,7 @@ apiClient.interceptors.response.use(
       error.response?.status !== 401 ||
       !request ||
       request._retriedAfterRefresh ||
+      request.skipAuthRefresh ||
       isAuthenticationRequest
     )
       return Promise.reject(error);
