@@ -42,6 +42,23 @@ export class EmailService {
     const text = `Your Chatting verification code is ${code}. It expires in ${env.emailVerificationCodeTtlMinutes} minutes.`;
     const html = `<p>Your Chatting verification code is:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>This code expires in ${env.emailVerificationCodeTtlMinutes} minutes.</p>`;
 
+    await this.send(email, subject, text, html);
+  }
+
+  async sendPasswordResetCode(email: string, code: string) {
+    const subject = "Your Chatting password reset code";
+    const text = `Your six-digit Chatting password reset code is ${code}. It expires in ${env.passwordResetCodeTtlMinutes} minutes. If you did not request a password reset, you can ignore this email.`;
+    const html = `<p>Use this six-digit code to reset your Chatting password:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>This code expires in ${env.passwordResetCodeTtlMinutes} minutes.</p><p>If you did not request a password reset, you can safely ignore this email.</p>`;
+
+    await this.send(email, subject, text, html);
+  }
+
+  private async send(
+    email: string,
+    subject: string,
+    text: string,
+    html: string,
+  ) {
     if (
       !env.gmailClientId ||
       !env.gmailClientSecret ||
@@ -86,7 +103,7 @@ export class EmailService {
         status?: string;
       };
     } | null;
-    console.error("Gmail rejected the verification email.", {
+    console.error("Gmail rejected the email.", {
       status: response.status,
       code: error?.error?.status,
       message: error?.error?.message,
@@ -108,7 +125,7 @@ export class EmailService {
         429,
       );
     throw new AppError(
-      "Unable to send the verification email through Gmail. Please try again.",
+      "Unable to send the email through Gmail. Please try again.",
       503,
     );
   }

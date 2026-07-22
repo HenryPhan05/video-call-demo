@@ -13,6 +13,7 @@ import axios from "axios";
 
 import {
   deleteMessage,
+  forgotPassword,
   getConversations,
   getMe,
   getMessages,
@@ -21,6 +22,7 @@ import {
   markConversationSeen,
   Message,
   register,
+  resetPassword,
   resendVerification,
   searchUsers,
   sendMessage,
@@ -99,7 +101,9 @@ export function App() {
     navigate,
   } = useAppNavigation();
   const initialSessionResolved = useRef(false);
+  const toastTimer = useRef<number | null>(null);
   const [routeReady, setRouteReady] = useState(false);
+  const [successToast, setSuccessToast] = useState("");
   const me = useQuery({
     queryKey: ["me"],
     queryFn: getMe,
@@ -117,6 +121,31 @@ export function App() {
     setRouteReady(true);
   }, [me.data, me.isLoading, navigate]);
 
+  useEffect(
+    () => () => {
+      if (toastTimer.current !== null)
+        window.clearTimeout(toastTimer.current);
+    },
+    [],
+  );
+
+  const showSuccessToast = useCallback((message: string) => {
+    if (toastTimer.current !== null)
+      window.clearTimeout(toastTimer.current);
+    setSuccessToast(message);
+    toastTimer.current = window.setTimeout(() => {
+      setSuccessToast("");
+      toastTimer.current = null;
+    }, 4_000);
+  }, []);
+
+  const dismissSuccessToast = () => {
+    if (toastTimer.current !== null)
+      window.clearTimeout(toastTimer.current);
+    toastTimer.current = null;
+    setSuccessToast("");
+  };
+
   if (me.isLoading || !routeReady)
     return (
       <main className="auth">
@@ -127,24 +156,65 @@ export function App() {
         <p>Loading...</p>
       </main>
     );
-  return me.data ? (
-    <Chat user={me.data.user} path={path} navigate={navigate} />
-  ) : (
-    <Auth path={path} navigate={navigate} />
+  return (
+    <>
+      {me.data ? (
+        <Chat user={me.data.user} path={path} navigate={navigate} />
+      ) : (
+        <Auth
+          path={path}
+          navigate={navigate}
+          onSuccessNotice={showSuccessToast}
+        />
+      )}
+      {successToast && (
+        <SuccessToast
+          message={successToast}
+          onDismiss={dismissSuccessToast}
+        />
+      )}
+    </>
+  );
+}
+
+function SuccessToast({
+  message,
+  onDismiss,
+}: {
+  message: string;
+  onDismiss: () => void;
+}) {
+  return (
+    <aside className="success-toast" role="status" aria-live="polite">
+      <span className="success-toast-icon" aria-hidden="true">
+        ✓
+      </span>
+      <span className="success-toast-copy">
+        <strong>Success</strong>
+        <small>{message}</small>
+      </span>
+      <button type="button" onClick={onDismiss} aria-label="Close notification">
+        ×
+      </button>
+      <span className="success-toast-timer" aria-hidden="true" />
+    </aside>
   );
 }
 
 function Auth({
   path,
   navigate,
+  onSuccessNotice,
 }: {
   path: string;
   navigate: Navigate;
+  onSuccessNotice: (message: string) => void;
 }) {
   const queryClient = useQueryClient();
   const registrationDraftKey = "chatting.registration-draft";
   const pendingEmailKey = "chatting.pending-verification-email";
   const resendDeadlineKey = "chatting.resend-available-at";
+  const resetDeadlineKey = "chatting.password-reset-resend-at";
   const [mode, setMode] = useState<"login" | "register">(() =>
     path === "/register" ? "register" : "login",
   );
@@ -181,6 +251,20 @@ function Auth({
     const deadline = Number(sessionStorage.getItem(resendDeadlineKey) ?? 0);
     return Math.max(0, Math.ceil((deadline - Date.now()) / 1_000));
   });
+  const [resetStep, setResetStep] = useState<"email" | "code">("email");
+  const [resetEmail, setResetEmail] = useState(
+    registrationDraft.email ?? "",
+  );
+  const [resetCode, setResetCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
+  const [resetMessage, setResetMessage] = useState("");
+  const [resetCooldown, setResetCooldown] = useState(() => {
+    const deadline = Number(sessionStorage.getItem(resetDeadlineKey) ?? 0);
+    return Math.max(0, Math.ceil((deadline - Date.now()) / 1_000));
+  });
   const passwordRules = {
     length: password.length >= 8 && password.length < 30,
     uppercase: /[A-Z]/.test(password),
@@ -202,6 +286,27 @@ function Auth({
         : "weak";
   const passwordsMatch =
     confirmPassword.length > 0 && password === confirmPassword;
+  const newPasswordRules = {
+    length: newPassword.length >= 8 && newPassword.length < 30,
+    uppercase: /[A-Z]/.test(newPassword),
+    lowercase: /[a-z]/.test(newPassword),
+    number: /[0-9]/.test(newPassword),
+    special: /[^A-Za-z0-9\s]/.test(newPassword),
+  };
+  const matchedNewPasswordCases = [
+    newPasswordRules.uppercase,
+    newPasswordRules.lowercase,
+    newPasswordRules.number,
+    newPasswordRules.special,
+  ].filter(Boolean).length;
+  const newPasswordStrength =
+    matchedNewPasswordCases === 4 && newPasswordRules.length
+      ? "strong"
+      : matchedNewPasswordCases === 0
+        ? "low"
+        : "weak";
+  const newPasswordsMatch =
+    confirmNewPassword.length > 0 && newPassword === confirmNewPassword;
 
   useEffect(() => {
     sessionStorage.setItem(
@@ -241,6 +346,11 @@ function Auth({
     setResendCooldown(60);
   };
 
+  const startResetCooldown = () => {
+    sessionStorage.setItem(resetDeadlineKey, String(Date.now() + 60_000));
+    setResetCooldown(60);
+  };
+
   const clearPendingVerification = () => {
     sessionStorage.removeItem(pendingEmailKey);
     sessionStorage.removeItem(resendDeadlineKey);
@@ -263,6 +373,20 @@ function Auth({
     }, 1_000);
     return () => window.clearTimeout(timer);
   }, [resendCooldown]);
+
+  useEffect(() => {
+    if (resetCooldown <= 0) return;
+    const timer = window.setTimeout(() => {
+      const deadline = Number(sessionStorage.getItem(resetDeadlineKey) ?? 0);
+      const remaining = Math.max(
+        0,
+        Math.ceil((deadline - Date.now()) / 1_000),
+      );
+      setResetCooldown(remaining);
+      if (remaining === 0) sessionStorage.removeItem(resetDeadlineKey);
+    }, 1_000);
+    return () => window.clearTimeout(timer);
+  }, [resetCooldown]);
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -288,6 +412,7 @@ function Auth({
     onSuccess: (response) => {
       if (response.kind === "login") {
         clearRegistrationSession();
+        onSuccessNotice("Successfully logged in. Welcome back!");
         queryClient.setQueryData(["me"], response.result);
         navigate("/conversations", {
           replace: true,
@@ -329,6 +454,7 @@ function Auth({
     onSuccess: (response) => {
       clearPendingVerification();
       clearRegistrationSession();
+      onSuccessNotice("Registration successful. Welcome to Chatting!");
       queryClient.setQueryData(["me"], response);
       navigate("/conversations", {
         replace: true,
@@ -359,6 +485,72 @@ function Auth({
     },
   });
 
+  const forgotPasswordMutation = useMutation({
+    mutationFn: () => forgotPassword(resetEmail.trim().toLowerCase()),
+    onSuccess: () => {
+      setError("");
+      setResetStep("code");
+      setResetMessage(
+        "We sent a six-digit password reset code to your email.",
+      );
+      startResetCooldown();
+    },
+    onError: (cause) => {
+      const message = axios.isAxiosError(cause)
+        ? cause.response?.data?.message
+        : undefined;
+      const backendUnavailable =
+        axios.isAxiosError(cause) && !cause.response;
+      setError(
+        message ??
+          (backendUnavailable
+            ? "Cannot connect to the backend. Start the server on port 4000 and try again."
+            : "The password reset code could not be sent."),
+      );
+      if (axios.isAxiosError(cause) && cause.response?.status === 429)
+        startResetCooldown();
+    },
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: () =>
+      resetPassword({
+        email: resetEmail.trim().toLowerCase(),
+        code: resetCode,
+        password: newPassword,
+      }),
+    onSuccess: () => {
+      sessionStorage.removeItem(resetDeadlineKey);
+      setEmail(resetEmail.trim().toLowerCase());
+      setPassword("");
+      setResetCode("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setResetMessage("");
+      setResetCooldown(0);
+      setResetStep("email");
+      setError("");
+      onSuccessNotice("Password reset successfully. Please sign in.");
+      setMode("login");
+      navigate("/login", {
+        replace: true,
+      });
+    },
+    onError: (cause) => {
+      const message = axios.isAxiosError(cause)
+        ? cause.response?.data?.message
+        : undefined;
+      const backendUnavailable =
+        axios.isAxiosError(cause) && !cause.response;
+      setError(
+        message ??
+          (backendUnavailable
+            ? "Cannot connect to the backend. Start the server on port 4000 and try again."
+            : "Your password could not be reset."),
+      );
+    },
+  });
+
   const handleAuthSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -373,6 +565,22 @@ function Auth({
     if (verificationMutation.isPending) return;
     setError("");
     verificationMutation.mutate();
+  };
+
+  const handleForgotPasswordSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (forgotPasswordMutation.isPending) return;
+    setError("");
+    forgotPasswordMutation.mutate();
+  };
+
+  const handleResetPasswordSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (resetPasswordMutation.isPending) return;
+    setError("");
+    resetPasswordMutation.mutate();
   };
 
   if (verificationEmail && path === "/verify-email")
@@ -448,6 +656,232 @@ function Auth({
               navigate("/login", {
                 replace: true,
               });
+            }}
+          >
+            Back to sign in
+          </button>
+        </form>
+      </main>
+    );
+
+  if (path === "/forgot-password")
+    return (
+      <main className="auth">
+        <Suspense fallback={null}>
+          <AuthBackground />
+        </Suspense>
+        <h1>Chatting</h1>
+        <h2>{resetStep === "email" ? "Forgot password" : "Reset password"}</h2>
+        <form
+          onSubmit={
+            resetStep === "email"
+              ? handleForgotPasswordSubmit
+              : handleResetPasswordSubmit
+          }
+        >
+          {resetStep === "email" ? (
+            <>
+              <p className="verification-help">
+                Enter the email connected to your account. We will send you a
+                six-digit reset code.
+              </p>
+              <input
+                value={resetEmail}
+                onChange={(event) => setResetEmail(event.target.value)}
+                type="email"
+                placeholder="Email"
+                autoComplete="email"
+                autoFocus
+                required
+              />
+            </>
+          ) : (
+            <>
+              <p className="verification-help">
+                Enter the six-digit code sent to <strong>{resetEmail}</strong>.
+              </p>
+              <input
+                className="verification-code"
+                value={resetCode}
+                onChange={(event) =>
+                  setResetCode(event.target.value.replace(/\D/g, ""))
+                }
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="000000"
+                minLength={6}
+                maxLength={6}
+                pattern="[0-9]{6}"
+                aria-label="Six-digit password reset code"
+                autoFocus
+                required
+              />
+              <div className="password-field">
+                <input
+                  id="new-password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  type={showNewPassword ? "text" : "password"}
+                  placeholder="New password"
+                  minLength={8}
+                  maxLength={29}
+                  autoComplete="new-password"
+                  required
+                />
+                <button
+                  className="password-toggle"
+                  type="button"
+                  onClick={() => setShowNewPassword((current) => !current)}
+                  aria-label={showNewPassword ? "Hide password" : "Show password"}
+                  aria-controls="new-password"
+                  aria-pressed={showNewPassword}
+                >
+                  <PasswordVisibilityIcon visible={showNewPassword} />
+                </button>
+              </div>
+              <div className={`password-strength ${newPasswordStrength}`}>
+                <div className="password-strength-heading">
+                  <strong>Password strength</strong>
+                  <span>{newPasswordStrength}</span>
+                </div>
+                <div className="password-strength-bars" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </div>
+                <ul>
+                  <li className={newPasswordRules.length ? "passed" : ""}>
+                    8–29 characters
+                  </li>
+                  <li className={newPasswordRules.uppercase ? "passed" : ""}>
+                    One uppercase letter
+                  </li>
+                  <li className={newPasswordRules.lowercase ? "passed" : ""}>
+                    One lowercase letter
+                  </li>
+                  <li className={newPasswordRules.number ? "passed" : ""}>
+                    One number
+                  </li>
+                  <li className={newPasswordRules.special ? "passed" : ""}>
+                    One special character
+                  </li>
+                </ul>
+              </div>
+              <div className="password-field">
+                <input
+                  id="confirm-new-password"
+                  value={confirmNewPassword}
+                  onChange={(event) =>
+                    setConfirmNewPassword(event.target.value)
+                  }
+                  type={showConfirmNewPassword ? "text" : "password"}
+                  placeholder="Confirm new password"
+                  minLength={8}
+                  maxLength={29}
+                  autoComplete="new-password"
+                  aria-invalid={
+                    confirmNewPassword.length > 0 && !newPasswordsMatch
+                  }
+                  required
+                />
+                <button
+                  className="password-toggle"
+                  type="button"
+                  onClick={() =>
+                    setShowConfirmNewPassword((current) => !current)
+                  }
+                  aria-label={
+                    showConfirmNewPassword
+                      ? "Hide confirmation password"
+                      : "Show confirmation password"
+                  }
+                  aria-controls="confirm-new-password"
+                  aria-pressed={showConfirmNewPassword}
+                >
+                  <PasswordVisibilityIcon visible={showConfirmNewPassword} />
+                </button>
+              </div>
+              {confirmNewPassword.length > 0 && (
+                <p
+                  className={`password-confirmation ${newPasswordsMatch ? "matched" : "mismatched"}`}
+                >
+                  {newPasswordsMatch
+                    ? "Passwords match."
+                    : "Passwords do not match."}
+                </p>
+              )}
+            </>
+          )}
+          {resetMessage && (
+            <p className="verification-message">{resetMessage}</p>
+          )}
+          {resetStep === "code" && resetCooldown > 0 && (
+            <p className="verification-cooldown" aria-live="polite">
+              Resend available in <strong>{resetCooldown}</strong>{" "}
+              {resetCooldown === 1 ? "second" : "seconds"}
+            </p>
+          )}
+          {error && <p className="error">{error}</p>}
+          <button
+            type="submit"
+            disabled={
+              resetStep === "email"
+                ? forgotPasswordMutation.isPending || !resetEmail.trim()
+                : resetPasswordMutation.isPending ||
+                  resetCode.length !== 6 ||
+                  newPasswordStrength !== "strong" ||
+                  !newPasswordsMatch
+            }
+          >
+            {resetStep === "email"
+              ? forgotPasswordMutation.isPending
+                ? "Sending code..."
+                : "Send reset code"
+              : resetPasswordMutation.isPending
+                ? "Resetting password..."
+                : "Reset password"}
+          </button>
+          {resetStep === "code" && (
+            <>
+              <button
+                type="button"
+                className="ghost"
+                disabled={forgotPasswordMutation.isPending || resetCooldown > 0}
+                onClick={() => {
+                  setError("");
+                  forgotPasswordMutation.mutate();
+                }}
+              >
+                {forgotPasswordMutation.isPending
+                  ? "Sending..."
+                  : resetCooldown > 0
+                    ? `Resend code in ${resetCooldown}s`
+                    : "Resend code"}
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  setResetStep("email");
+                  setResetCode("");
+                  setNewPassword("");
+                  setConfirmNewPassword("");
+                  setResetMessage("");
+                  setError("");
+                }}
+              >
+                Use a different email
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => {
+              setEmail(resetEmail);
+              setError("");
+              setMode("login");
+              navigate("/login");
             }}
           >
             Back to sign in
@@ -621,6 +1055,21 @@ function Auth({
               ? "Sign in"
               : "Create account"}
         </button>
+        {mode === "login" && (
+          <button
+            type="button"
+            className="ghost auth-forgot"
+            onClick={() => {
+              setResetEmail(email);
+              setResetStep("email");
+              setResetMessage("");
+              setError("");
+              navigate("/forgot-password");
+            }}
+          >
+            Forgot password?
+          </button>
+        )}
         <button
           type="button"
           className="ghost auth-switch"

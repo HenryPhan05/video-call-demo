@@ -44,6 +44,26 @@ const resendLimiter = rateLimit({
     message: "Too many code requests. Try again later.",
   },
 });
+const passwordResetRequestLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many password reset code requests. Try again later.",
+  },
+});
+const passwordResetAttemptLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many password reset attempts. Try again later.",
+  },
+});
 authRouter.post(
   "/register",
   registerLimiter,
@@ -74,11 +94,13 @@ authRouter.post(
 );
 authRouter.post(
   "/forgot-password",
+  passwordResetRequestLimiter,
   validate(forgotPasswordSchema),
   asyncHandler(c.forgotPassword),
 );
 authRouter.post(
   "/reset-password",
+  passwordResetAttemptLimiter,
   validate(resetPasswordSchema),
   asyncHandler(c.resetPassword),
 );

@@ -160,6 +160,15 @@ export const resendVerification = (email: string) =>
   apiClient.post("/auth/resend-verification", {
     email,
   });
+export const forgotPassword = (email: string) =>
+  apiClient.post("/auth/forgot-password", {
+    email,
+  });
+export const resetPassword = (input: {
+  email: string;
+  code: string;
+  password: string;
+}) => apiClient.post("/auth/reset-password", input);
 export const logout = () => apiClient.post("/auth/logout");
 export const searchUsers = (query: string) =>
   apiClient

@@ -72,10 +72,11 @@ export const changePasswordSchema = z.object({
 });
 
 export const forgotPasswordSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().email("Enter a valid email address."),
 });
 
 export const resetPasswordSchema = z.object({
-  token: z.string().min(20),
+  email: z.string().trim().email("Enter a valid email address."),
+  code: z.string().trim().regex(/^\d{6}$/, "Enter the six-digit code."),
   password,
 });

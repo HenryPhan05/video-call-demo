@@ -20,6 +20,11 @@ const verificationHash = (userId: string, code: string) =>
     .createHmac("sha256", env.jwtSecret)
     .update(`${userId}:${code}`)
     .digest("hex");
+const passwordResetHash = (userId: string, code: string) =>
+  crypto
+    .createHmac("sha256", env.jwtSecret)
+    .update(`password-reset:${userId}:${code}`)
+    .digest("hex");
 
 export class AuthService {
   async register(
@@ -138,17 +143,64 @@ export class AuthService {
   }
   async forgotPassword(email: string) {
     const user = await users.findByEmail(email.toLowerCase());
-    if (!user) return;
-    const token = crypto.randomBytes(32).toString("base64url");
-    await resets.create(user.id, hash(token), new Date(Date.now() + 3600000));
-    console.info(`Password reset token for ${email}: ${token}`);
+    if (!user)
+      throw new AppError("This email is not registered.", 404);
+    const latest = await resets.latestForUser(user.id);
+    if (latest && Date.now() - latest.createdAt.getTime() < 60_000)
+      throw new AppError(
+        "Please wait 60 seconds before requesting another reset code.",
+        429,
+      );
+
+    const code = crypto.randomInt(100_000, 1_000_000).toString();
+    const reset = await resets.replaceCode(
+      user.id,
+      passwordResetHash(user.id, code),
+      new Date(Date.now() + env.passwordResetCodeTtlMinutes * 60_000),
+    );
+    try {
+      await emailService.sendPasswordResetCode(user.email, code);
+    } catch (cause) {
+      await resets.invalidate(reset.id).catch((error) => {
+        console.error("Unable to invalidate an undelivered reset code.", error);
+      });
+      throw cause;
+    }
   }
-  async resetPassword(token: string, password: string) {
-    const record = await resets.find(hash(token));
-    if (!record) throw new AppError("Reset token is invalid or expired.", 400);
-    await users.updatePassword(record.userId, await bcrypt.hash(password, 12));
-    await resets.use(record.id);
-    await refreshTokens.revokeAll(record.userId);
+
+  async resetPassword(email: string, code: string, password: string) {
+    const user = await users.findByEmail(email.toLowerCase());
+    if (!user)
+      throw new AppError("Reset code is invalid or expired.", 400);
+    const record = await resets.latestForUser(user.id);
+    if (!record || record.expiresAt.getTime() <= Date.now()) {
+      if (record) await resets.invalidate(record.id);
+      throw new AppError("Reset code is invalid or expired.", 400);
+    }
+    if (record.attempts >= 5)
+      throw new AppError("Too many attempts. Request a new reset code.", 429);
+
+    const expected = Buffer.from(record.tokenHash, "hex");
+    const received = Buffer.from(passwordResetHash(user.id, code), "hex");
+    if (!crypto.timingSafeEqual(expected, received)) {
+      const finalAttempt = record.attempts + 1 >= 5;
+      await resets.recordFailedAttempt(record.id, finalAttempt);
+      throw new AppError(
+        finalAttempt
+          ? "Too many attempts. Request a new reset code."
+          : "Reset code is invalid or expired.",
+        finalAttempt ? 429 : 400,
+      );
+    }
+
+    const consumed = await resets.consumeAndUpdatePassword(
+      record.id,
+      user.id,
+      await bcrypt.hash(password, 12),
+    );
+    if (!consumed)
+      throw new AppError("Reset code is invalid or expired.", 400);
+    await refreshTokens.revokeAll(user.id);
   }
   async session(userId: string, user: any, meta?: any) {
     const refreshToken = crypto.randomBytes(48).toString("base64url");

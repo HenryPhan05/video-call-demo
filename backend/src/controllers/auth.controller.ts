@@ -77,9 +77,17 @@ export const changePassword: RequestHandler = async (req, res) => {
 };
 export const forgotPassword: RequestHandler = async (req, res) => {
   await service.forgotPassword(req.body.email);
-  return ok(res, null, "If that account exists, a reset link has been sent.");
+  return ok(
+    res,
+    null,
+    "A six-digit password reset code has been sent.",
+  );
 };
 export const resetPassword: RequestHandler = async (req, res) => {
-  await service.resetPassword(req.body.token, req.body.password);
+  await service.resetPassword(
+    req.body.email,
+    req.body.code,
+    req.body.password,
+  );
   return ok(res, null, "Password reset. Please sign in.");
 };

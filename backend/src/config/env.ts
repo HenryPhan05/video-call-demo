@@ -33,6 +33,11 @@ export const env = {
     10,
     "EMAIL_VERIFICATION_CODE_TTL_MINUTES",
   ),
+  passwordResetCodeTtlMinutes: getPositiveInteger(
+    process.env.PASSWORD_RESET_CODE_TTL_MINUTES,
+    10,
+    "PASSWORD_RESET_CODE_TTL_MINUTES",
+  ),
   stunUrl: process.env.STUN_URL ?? "stun:stun.l.google.com:19302",
   turnUrl: process.env.TURN_URL,
   turnUsername: process.env.TURN_USERNAME,
