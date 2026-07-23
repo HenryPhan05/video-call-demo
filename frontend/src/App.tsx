@@ -105,6 +105,16 @@ type Presence = {
   status: "online" | "offline";
   lastSeenAt?: string | null;
 };
+type DeleteConfirmation =
+  | {
+      type: "conversation";
+      id: string;
+      title: string;
+    }
+  | {
+      type: "message";
+      id: string;
+    };
 
 const themeStorageKey = "chatting.theme";
 
@@ -1290,6 +1300,8 @@ function Chat({
     null,
   );
   const [conversationActionError, setConversationActionError] = useState("");
+  const [deleteConfirmation, setDeleteConfirmation] =
+    useState<DeleteConfirmation | null>(null);
   const [presenceByUser, setPresenceByUser] = useState<
     Record<string, Presence>
   >({});
@@ -1664,12 +1676,14 @@ function Chat({
   const removeConversation = useMutation({
     mutationFn: deleteConversationForMe,
     onSuccess: (result) => {
+      setDeleteConfirmation(null);
       queryClient.removeQueries({
         queryKey: ["messages", result.conversationId],
       });
       hideConversationLocally(result.conversationId);
     },
     onError: (cause) => {
+      setDeleteConfirmation(null);
       setConversationActionError(
         conversationActionMessage(cause, "Unable to delete conversation."),
       );
@@ -1751,8 +1765,36 @@ function Chat({
   });
   const remove = useMutation({
     mutationFn: deleteMessage,
-    onError: () => setSendError("The message could not be deleted."),
+    onSuccess: () => setDeleteConfirmation(null),
+    onError: () => {
+      setDeleteConfirmation(null);
+      setSendError("The message could not be deleted.");
+    },
   });
+
+  useEffect(() => {
+    if (!deleteConfirmation) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (
+        event.key === "Escape" &&
+        !removeConversation.isPending &&
+        !remove.isPending
+      ) {
+        setDeleteConfirmation(null);
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [deleteConfirmation, remove.isPending, removeConversation.isPending]);
+
+  const confirmDeletion = () => {
+    if (!deleteConfirmation) return;
+    if (deleteConfirmation.type === "conversation") {
+      removeConversation.mutate(deleteConfirmation.id);
+      return;
+    }
+    remove.mutate(deleteConfirmation.id);
+  };
 
   const selectConversation = (id: string) => {
     if (recordingVoice) return;
@@ -1973,13 +2015,12 @@ function Chat({
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    if (
-                      confirm(
-                        "Delete this conversation for you? The other user will keep their copy.",
-                      )
-                    ) {
-                      removeConversation.mutate(conversation.id);
-                    }
+                    setConversationMenuId(null);
+                    setDeleteConfirmation({
+                      type: "conversation",
+                      id: conversation.id,
+                      title: conversation.title,
+                    });
                   }}
                   disabled={removeConversation.isPending}
                 >
@@ -2161,10 +2202,12 @@ function Chat({
                     {mine && (
                       <button
                         type="button"
-                        onClick={() => {
-                          if (confirm("Delete this message for everyone?"))
-                            remove.mutate(message.id);
-                        }}
+                        onClick={() =>
+                          setDeleteConfirmation({
+                            type: "message",
+                            id: message.id,
+                          })
+                        }
                       >
                         Delete
                       </button>
@@ -2344,6 +2387,63 @@ function Chat({
             </form>
           </FileDropZone>
         </main>
+      )}
+      {deleteConfirmation && (
+        <div
+          className="delete-confirmation-backdrop"
+          onMouseDown={(event) => {
+            if (
+              event.target === event.currentTarget &&
+              !removeConversation.isPending &&
+              !remove.isPending
+            ) {
+              setDeleteConfirmation(null);
+            }
+          }}
+        >
+          <section
+            className="delete-confirmation-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-confirmation-title"
+            aria-describedby="delete-confirmation-description"
+          >
+            <span className="delete-confirmation-icon" aria-hidden="true">
+              !
+            </span>
+            <div className="delete-confirmation-copy">
+              <h2 id="delete-confirmation-title">
+                Are you sure to delete it?
+              </h2>
+              <p id="delete-confirmation-description">
+                {deleteConfirmation.type === "conversation"
+                  ? `${deleteConfirmation.title} will be removed from your conversations. The other user will keep their copy.`
+                  : "This message will be deleted for everyone in the conversation."}
+              </p>
+            </div>
+            <div className="delete-confirmation-actions">
+              <button
+                className="cancel-delete"
+                type="button"
+                autoFocus
+                disabled={removeConversation.isPending || remove.isPending}
+                onClick={() => setDeleteConfirmation(null)}
+              >
+                No
+              </button>
+              <button
+                className="confirm-delete"
+                type="button"
+                disabled={removeConversation.isPending || remove.isPending}
+                onClick={confirmDeletion}
+              >
+                {removeConversation.isPending || remove.isPending
+                  ? "Deleting..."
+                  : "Yes"}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
       <CallManager
         socket={socketClient}
