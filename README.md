@@ -1,185 +1,310 @@
 # Chatting
 
-Chatting is a full-stack, real-time communication application for private conversations between registered users. It combines persistent messaging, media attachments, presence, reactions, voice messages, and one-to-one voice/video calls in a responsive web interface.
+Chatting is a full-stack, real-time communication application for private
+conversations between registered users. It combines persistent messaging,
+protected media sharing, online presence, voice messages, and one-to-one
+voice/video calls in a responsive Messenger-style interface.
 
-This repository is also a full-stack learning project that demonstrates how a React client, an Express API, MySQL, Redis, Socket.IO, and WebRTC work together in one application.
+The project also demonstrates how a React client, an Express API, Prisma,
+MySQL, Redis, Socket.IO, JWT authentication, Gmail OAuth, and WebRTC integrate
+in one application.
 
-## What can the app do?
+## Current features
 
-- Register with email-code verification, sign in, sign out, and maintain an authenticated session.
-- Search for users and start direct conversations.
+### Accounts and security
+
+- Registration with first name, optional last name, unique username, unique
+  email, password confirmation, and a strength indicator.
+- Passwords require 8–29 characters with uppercase, lowercase, number, and
+  special-character checks.
+- Six-digit email verification before the first sign-in.
+- A 60-second resend-code cooldown and rate-limited authentication endpoints.
+- Login, logout, logout from all devices, password change, forgot password,
+  and password reset.
+- Password reset also uses a six-digit code delivered by email.
+- JWT access and refresh sessions stored in HTTP-only cookies.
+- Refresh-token rotation, hashed token storage, reuse prevention, and
+  multi-device sessions.
+
+### Conversations and messaging
+
+- Search for an existing username and start a private conversation.
+- Persistent text and attachment messages stored in MySQL.
 - Send, edit, soft-delete, reply to, and react to messages.
-- Display message delivery/seen state and typing indicators.
-- Upload images, videos, audio, voice recordings, PDFs, Word documents, spreadsheets, and ZIP files.
-- Preview supported media in the conversation and download protected files.
-- Update the current user's display name and avatar.
-- Send and manage friend requests.
-- Show online presence and last-seen information.
-- Record voice messages in the browser.
-- Make authenticated one-to-one voice and video calls with WebRTC.
-- Store message, attachment, account, relationship, and call history in MySQL.
+- View who reacted to a message.
+- Delivery and seen receipts.
+- Automatic unread counts: a new unseen message marks the conversation unread;
+  opening and seeing it marks the conversation read.
+- Manual **Mark as read** and **Mark as unread** controls.
+- Per-user conversation archive and deletion. Archiving or deleting a
+  conversation for one user does not remove the other user's copy.
+- Realtime Socket.IO updates without refreshing the page.
+- Floating responsive typing indicator with the other user's avatar and name.
+- Centered, themed confirmation modal for message and conversation deletion.
 
-## System architecture
+### Presence
+
+- Realtime online/offline status.
+- Green **Online** status in light and dark themes.
+- Persisted last-seen timestamps displayed as:
+  - `Active just now`
+  - `Active 40 minutes ago`
+  - `Active 1 hour ago`
+  - `Active 1 day ago`
+  - `Active 1 week ago`
+- Presence snapshots after page refresh or Socket.IO reconnection.
+- Multiple tabs/devices are counted before a user is marked offline.
+
+### Files, media, and voice messages
+
+- Drag and drop or use the attachment picker.
+- Upload progress and selected-file previews.
+- Image, video, audio, PDF, Word, spreadsheet, and ZIP support.
+- Images display inline and can be opened in the viewer.
+- HTML5 video and audio playback.
+- Protected document downloads.
+- Browser voice recording with preview, cancel, and send controls.
+- Attachment metadata and message relations persisted through Prisma.
+- Upload and download authorization based on conversation membership.
+
+### Voice and video calls
+
+- Authenticated one-to-one voice and video calls.
+- Incoming, ringing, connected, rejected, cancelled, and ended call states.
+- WebRTC offer, answer, and ICE-candidate signaling through Socket.IO.
+- Microphone mute/unmute and camera enable/disable controls.
+- STUN configuration and optional TURN credentials.
+- Call and participant history stored in MySQL.
+- Redis-backed active-call state and recovery support.
+
+### User interface
+
+- Responsive desktop, tablet, and mobile chat layout.
+- Light and dark themes with a persistent theme preference.
+- Glass-style login and registration pages with Three.js background animation.
+- Password show/hide controls and inline validation.
+- Success notifications after login and email verification.
+- Settings page for username, profile details, and avatar.
+- Circular avatars throughout conversations and messages.
+- Avatar cropper with 100%–200% zoom.
+- Unread badge anchored beside each conversation's options button.
+- Accessible keyboard focus states and reduced-motion support.
+
+## Architecture
 
 ```text
-React + TypeScript frontend
+React + TypeScript + Vite
         |
-        | HTTPS/REST, HTTP-only cookies, Socket.IO
+        | REST / HTTP-only cookies / Socket.IO
         v
-Express + TypeScript backend
+Express + TypeScript
         |
-        +-- Controllers -> Services -> Repositories -> Prisma -> MySQL
+        +-- Routes
+        |     -> Controllers
+        |     -> Services
+        |     -> Repositories
+        |     -> Prisma
+        |     -> MySQL
         |
-        +-- Socket.IO -> Redis adapter/presence -> connected clients
+        +-- Socket.IO
+        |     -> Redis adapter
+        |     -> chat, typing, presence, and WebRTC signaling
         |
-        +-- WebRTC signaling -> peer-to-peer audio/video
+        +-- Multer
+        |     -> protected local attachment storage
         |
-        +-- Multer -> protected local attachment storage
+        +-- Gmail API
+              -> verification and password-reset email
 ```
 
-Messages and files are persisted before the server broadcasts their database-backed records to connected users. WebRTC audio/video media travels between peers; Socket.IO is used only for call signaling and realtime application events.
+Persistent messages are saved before `message:new` is broadcast. WebRTC
+audio/video travels peer-to-peer; Socket.IO carries signaling and realtime
+application events.
 
 ## Frontend
 
-The frontend is located in [`frontend/`](frontend/) and uses:
+The frontend is in [`frontend/`](frontend/) and uses:
 
-| Technology            | Purpose                                                                  |
-| --------------------- | ------------------------------------------------------------------------ |
-| React 19              | Component-based user interface                                           |
-| TypeScript            | Static typing for users, conversations, messages, attachments, and calls |
-| Vite                  | Development server and production bundler                                |
-| TanStack React Query  | Server-state fetching, caching, and refresh                              |
-| Axios                 | Authenticated REST requests and upload progress                          |
-| Socket.IO Client      | Realtime messages, reactions, typing, presence, and call signaling       |
-| WebRTC browser APIs   | Peer-to-peer microphone and camera communication                         |
-| MediaRecorder API     | Recording voice messages in the browser                                  |
-| Custom responsive CSS | Messenger-style desktop and mobile layout                                |
+| Technology | Purpose |
+| --- | --- |
+| React 19 | Component-based user interface |
+| TypeScript | Typed users, conversations, messages, attachments, and calls |
+| Vite | Development server and production build |
+| TanStack React Query | API state, caching, invalidation, and realtime cache updates |
+| Axios | Authenticated API requests and upload progress |
+| Socket.IO Client | Messages, receipts, typing, presence, and call signaling |
+| WebRTC APIs | Peer-to-peer microphone and camera calls |
+| MediaRecorder API | Voice-message recording |
+| Three.js | Animated authentication-page background |
+| Custom CSS | Responsive Messenger-style UI and light/dark themes |
 
-The frontend and backend are fully integrated. Axios sends cookies with API requests, Socket.IO uses the same authenticated session, and incoming message events retain attachment and reaction metadata so the UI updates without a page refresh.
+Important frontend areas:
+
+```text
+frontend/src/
+|-- api/
+|   |-- client.ts                  # Axios instance and auth refresh behavior
+|   `-- chat.ts                    # Typed API functions
+|-- components/
+|   |-- auth/                      # Three.js authentication background
+|   |-- chat/                      # Attachments, voice recorder, and calls
+|   `-- profile/                   # Avatar cropper
+|-- App.tsx                        # Authentication, settings, and chat workflow
+|-- styles.css                     # Base application styling
+|-- chat-overrides.css             # Current chat, themes, and responsive UI
+`-- main.tsx                       # React entry point
+```
 
 ## Backend
 
-The backend is located in [`backend/`](backend/) and uses:
+The backend is in [`backend/`](backend/) and uses:
 
-| Technology              | Purpose                                                                         |
-| ----------------------- | ------------------------------------------------------------------------------- |
-| Node.js                 | JavaScript runtime                                                              |
-| Express                 | REST API and middleware pipeline                                                |
-| TypeScript              | Strictly typed backend application code                                         |
-| Prisma ORM              | MySQL schema, migrations, relations, and database queries                       |
-| MySQL 8                 | Persistent application database                                                 |
-| Redis 7 / ioredis       | Presence, socket mapping, active-call state, and shared realtime infrastructure |
-| Socket.IO               | Realtime messages, typing, presence, reactions, and WebRTC signaling            |
-| Socket.IO Redis Adapter | Sharing Socket.IO events when multiple backend instances are used               |
-| JSON Web Token          | Access-token authentication                                                     |
-| bcryptjs                | Password hashing                                                                |
-| Multer                  | Avatar and chat attachment uploads                                              |
-| Gmail API               | OAuth 2.0 HTTPS delivery of account verification codes                          |
-| Zod                     | API request validation                                                          |
-| Helmet                  | Security-related HTTP headers                                                   |
-| express-rate-limit      | Authentication endpoint rate limiting                                           |
-| CORS and cookie-parser  | Cross-origin cookie sessions and cookie parsing                                 |
+| Technology | Purpose |
+| --- | --- |
+| Node.js and Express | REST API and middleware pipeline |
+| TypeScript | Strict backend typing |
+| Prisma 6 | MySQL schema, migrations, relations, and queries |
+| MySQL 8 | Persistent application data |
+| Redis 7 and ioredis | Presence, socket mapping, active calls, and scaling |
+| Socket.IO | Realtime chat, typing, presence, receipts, and signaling |
+| Socket.IO Redis Adapter | Cross-instance event delivery |
+| JSON Web Token | Access-token authentication |
+| bcryptjs | Password hashing with 12 rounds |
+| Multer | Avatar and attachment upload handling |
+| Gmail API | OAuth 2.0 email delivery |
+| Zod | Request validation |
+| Helmet | Security-related HTTP headers |
+| express-rate-limit | Authentication request limits |
+| CORS and cookie-parser | Cross-origin cookies and request parsing |
 
-Backend responsibilities are separated into routes, controllers, services, and repositories. Repositories contain Prisma access, services apply business and authorization rules, controllers produce standardized API responses, and routes connect validation/authentication middleware to controllers.
+Backend request flow:
 
-## Authentication and security
+```text
+Route -> validation/auth middleware -> Controller -> Service
+      -> Repository -> Prisma -> MySQL
+```
 
-Yes, Chatting uses JWT authentication.
+Controllers handle HTTP input/output, services contain business and
+authorization rules, and repositories own Prisma access.
 
-- A 15-minute access token is stored in a secure, HTTP-only cookie.
-- A seven-day refresh token is stored in a separate HTTP-only cookie.
-- Raw refresh tokens are never stored in MySQL; the backend stores a SHA-256 hash.
-- Refresh tokens are rotated and the previous database record is revoked during refresh.
-- Passwords are hashed with bcrypt using 12 rounds.
-- New accounts receive a six-digit email code and cannot sign in until verified.
-- Verification codes expire, are attempt-limited, and are stored only as keyed hashes.
-- Verification codes can be resent after a cooldown; resend and verification endpoints are rate limited.
-- Socket.IO validates the access-token cookie during its handshake.
-- Protected routes verify the authenticated user and conversation membership.
-- Attachment view/download endpoints only return files linked to a conversation the user belongs to.
-- Zod validates supported request bodies.
-- Helmet, CORS, JSON size limits, and authentication rate limiting protect the HTTP layer.
+## Authentication details
 
-Verification email is delivered through the Gmail HTTPS API using the least-privilege `gmail.send` OAuth scope. The backend exchanges the stored refresh token for short-lived access tokens and never stores a Gmail password. Registration returns a configuration error when any Gmail OAuth value is missing, so the UI never falsely claims that an email was sent. The forgot-password delivery remains mocked locally and writes its reset token to the backend console.
+Chatting uses cookie-based JWT authentication:
+
+- Access token: 15 minutes.
+- Refresh token: 7 days.
+- Cookies: HTTP-only, `sameSite=lax`, secure in production.
+- Refresh tokens: random 48-byte values; only SHA-256 hashes are stored.
+- Refresh flow: revoke the previous token, create a new record, and issue new
+  cookies.
+- Password change/reset: revoke every existing refresh session.
+- Socket.IO: verifies the access-token cookie during the handshake.
+
+Verification and password-reset codes:
+
+- Six numeric digits.
+- HMAC-hashed before database storage.
+- Configurable expiry, defaulting to 10 minutes.
+- Maximum of five invalid attempts per issued code.
+- Replaced and invalidated when a new code is issued.
+- Delivered through the Gmail API using only the `gmail.send` scope.
 
 ## Database and Prisma
 
-Chatting uses Prisma ORM with MySQL. The schema is in [`backend/prisma/schema.prisma`](backend/prisma/schema.prisma), and versioned migrations are in [`backend/prisma/migrations/`](backend/prisma/migrations/).
+The Prisma schema is
+[`backend/prisma/schema.prisma`](backend/prisma/schema.prisma). Versioned MySQL
+migrations are under [`backend/prisma/migrations/`](backend/prisma/migrations/).
 
-Important database models include:
+Main models:
 
-- `User`, `RefreshToken`, `PasswordResetToken`, and `EmailVerificationToken`
-- `Friend` and `Block`
-- `Conversation` and `Participant`
-- `Message`, `MessageReaction`, `MessagePin`, `MessageMention`, and `MessageReceipt`
-- `Attachment`
-- `Call` and `CallParticipant`
-- `Notification`
+- Authentication: `User`, `RefreshToken`, `EmailVerificationToken`,
+  `PasswordResetToken`
+- Social: `Friend`, `Block`
+- Chat: `Conversation`, `Participant`, `Message`
+- Messaging details: `MessageReaction`, `MessagePin`, `MessageMention`,
+  `MessageReceipt`
+- Media: `Attachment`
+- Calls: `Call`, `CallParticipant`
+- Other: `Notification`
 
-Messages support replies, forwarding references, edited timestamps, soft deletion, attachments, reactions, mentions, pins, and receipts. Database indexes cover common conversation, user, message-history, attachment, and call-history queries.
+The `Participant` record stores user-specific conversation state such as
+`unreadCount`, `lastReadAt`, `archivedAt`, `deletedAt`, and `clearedAt`.
+`User.lastSeenAt` stores the persistent offline timestamp.
 
-## Redis and realtime communication
+## Redis and Socket.IO
 
-Redis is integrated into the backend for:
+Redis is used for:
 
-- Socket.IO's Redis adapter, enabling shared events across backend instances.
-- Online-user presence and multiple browser tabs/devices.
-- Mapping Socket.IO connection IDs to users.
-- Tracking active call state and reconnecting users to an ongoing call.
+- Socket.IO's Redis adapter for multiple backend instances.
+- User-to-socket mapping.
+- Multiple-tab/device presence.
+- Active-call tracking and call recovery.
 
-If Redis is unavailable during development, the backend logs a warning and continues with a single Socket.IO server. MySQL remains the source of truth for persistent data.
+If Redis is unavailable in development, the backend logs one warning and
+continues as a single Socket.IO node. MySQL remains the persistent source of
+truth.
 
-Main realtime events include:
+Current realtime events include:
 
-- Messaging: `message:new`, `message:update`, `message:delete`, `message:seen`
+- Messages: `message:new`, `message:update`, `message:delete`, `message:seen`
 - Typing: `typing:start`, `typing:stop`, `typing:update`
-- Presence: `presence:update`
-- Calls: `call:start`, `call:ringing`, `call:accept`, `call:reject`, `call:cancel`, `call:end`, `call:recover`
+- Presence: `presence:request`, `presence:snapshot`, `presence:update`
+- Calls: `call:start`, `call:ringing`, `call:accept`, `call:reject`,
+  `call:cancel`, `call:end`, `call:recover`
 - WebRTC: `webrtc:offer`, `webrtc:answer`, `webrtc:ice-candidate`
 
-## File and media support
+## Upload support
 
-Multer stores uploaded files under `backend/uploads/`. Filenames are generated with UUIDs instead of trusting the original filename. Metadata and message relations are persisted through Prisma.
+Multer stores local files under `backend/uploads/` with UUID-based stored
+filenames. The application never trusts the original filename as a filesystem
+path.
 
-Currently supported MIME categories include:
+| Category | Supported formats |
+| --- | --- |
+| Images | JPEG, PNG, WebP |
+| Video | MP4, WebM |
+| Audio/voice | MP3, WebM, WAV, OGG |
+| Documents | PDF, DOC, DOCX, XLS, XLSX |
+| Archives | ZIP |
 
-- Images: JPEG, PNG, and WebP
-- Videos: MP4 and WebM
-- Audio/voice: MP3, WebM, WAV, and OGG
-- Documents: PDF, DOC, DOCX, XLS, and XLSX
-- Archives: ZIP
+- Attachment limit: 25 MB per file.
+- Avatar limit: 5 MB.
+- Avatars are public profile media.
+- Conversation attachments require authentication and membership for inline
+  viewing or downloading.
 
-The current attachment limit is 25 MB per file, and avatars are limited to 5 MB. Attachment access is authenticated and authorized by conversation membership.
-
-## Project structure
+## Repository structure
 
 ```text
 mini-project/
 |-- backend/
-|   |-- prisma/                 # Prisma schema and MySQL migrations
+|   |-- prisma/
+|   |   |-- schema.prisma
+|   |   `-- migrations/
 |   |-- src/
-|   |   |-- config/             # Environment configuration
-|   |   |-- controllers/        # HTTP request/response handling
-|   |   |-- middleware/         # Authentication, validation, uploads, errors
-|   |   |-- repositories/       # Prisma database access
-|   |   |-- routes/             # REST endpoint definitions
-|   |   |-- services/           # Business and authorization rules
-|   |   |-- socket/             # Chat, presence, and call events
-|   |   |-- utils/              # Tokens, errors, and API responses
-|   |   |-- app.ts              # Express application
-|   |   `-- server.ts           # HTTP, Socket.IO, and Redis bootstrap
-|   `-- uploads/                # Local avatars and attachments
+|   |   |-- config/
+|   |   |-- controllers/
+|   |   |-- middleware/
+|   |   |-- repositories/
+|   |   |-- routes/
+|   |   |-- services/
+|   |   |-- socket/
+|   |   |-- utils/
+|   |   |-- app.ts
+|   |   `-- server.ts
+|   `-- uploads/
 |-- frontend/
 |   |-- src/
-|   |   |-- api/                # Axios client and typed API functions
-|   |   |-- components/chat/    # Attachments, calls, and voice recorder
-|   |   |-- App.tsx             # Authentication and main chat workflow
-|   |   |-- styles.css          # Main responsive styling
-|   |   `-- main.tsx            # React entry point
+|   |   |-- api/
+|   |   |-- components/
+|   |   |-- App.tsx
+|   |   |-- styles.css
+|   |   `-- chat-overrides.css
 |   `-- index.html
-|-- docs/                       # API, Redis, Socket.IO, ER, and deployment docs
-|-- docker-compose.yml          # Local MySQL and Redis services
-`-- package.json                # npm workspace scripts
+|-- docs/
+|-- docker-compose.yml
+|-- package.json
+`-- README.md
 ```
 
 ## Local development
@@ -188,8 +313,8 @@ mini-project/
 
 - Node.js 20 or newer
 - npm
-- Docker Desktop, or separately installed MySQL 8 and Redis 7
-- A modern browser with microphone/camera support for voice and video calls
+- Docker Desktop, or local MySQL 8 and Redis 7 installations
+- A modern browser with microphone and camera support
 
 ### 1. Install dependencies
 
@@ -205,11 +330,14 @@ npm.cmd install
 docker compose up -d
 ```
 
-Docker exposes MySQL on port `3307` and Redis on port `6379`.
+The included Compose configuration exposes:
+
+- MySQL: `localhost:3307`
+- Redis: `localhost:6379`
 
 ### 3. Configure the backend
 
-Copy `backend/.env.example` to `backend/.env`, then use values suitable for your environment. With the included Docker Compose file, a local configuration is:
+Copy `backend/.env.example` to `backend/.env`.
 
 ```dotenv
 NODE_ENV=development
@@ -217,15 +345,19 @@ PORT=4000
 CLIENT_ORIGIN=http://localhost:5173
 DATABASE_URL="mysql://chatter:chatter_dev_password@localhost:3307/chatter"
 REDIS_URL=redis://localhost:6379
-JWT_SECRET=replace-this-with-a-long-random-secret
+JWT_SECRET=replace-with-a-long-random-secret
+
+ACCESS_TOKEN_TTL=15m
+REFRESH_TOKEN_TTL_DAYS=7
+
 GMAIL_CLIENT_ID=your_google_oauth_client_id
 GMAIL_CLIENT_SECRET=your_google_oauth_client_secret
 GMAIL_REFRESH_TOKEN=your_google_oauth_refresh_token
 GMAIL_SENDER_EMAIL=your-sender@gmail.com
 GMAIL_SENDER_NAME=Chatting
 EMAIL_VERIFICATION_CODE_TTL_MINUTES=10
-ACCESS_TOKEN_TTL=15m
-REFRESH_TOKEN_TTL_DAYS=7
+PASSWORD_RESET_CODE_TTL_MINUTES=10
+
 UPLOAD_DIR=uploads
 STUN_URL=stun:stun.l.google.com:19302
 TURN_URL=
@@ -233,22 +365,30 @@ TURN_USERNAME=
 TURN_PASSWORD=
 ```
 
-### Gmail API setup
+Do not commit `.env`, Gmail tokens, database passwords, JWT secrets, or TURN
+credentials.
 
-1. In [Google Cloud Console](https://console.cloud.google.com/), create or select a project. Open **APIs & Services > Library**, find **Gmail API**, and enable it.
-2. Open **Google Auth Platform**. Configure the app name and support email, choose an **External** audience, keep the app in **Testing**, and add the Gmail sender as a test user.
-3. Under **Data Access**, add only `https://www.googleapis.com/auth/gmail.send`.
-4. Under **Clients**, create an OAuth client of type **Web application**. Add `https://developers.google.com/oauthplayground` as an authorized redirect URI. Copy the client ID and client secret.
-5. Open [OAuth 2.0 Playground](https://developers.google.com/oauthplayground). In its settings, enable **Use your own OAuth credentials** and enter that client ID and secret.
-6. In Playground step 1, authorize `https://www.googleapis.com/auth/gmail.send` while signed in as the sender Gmail account. In step 2, exchange the authorization code for tokens and copy the refresh token.
-7. Put the client ID, client secret, refresh token, and sender email into `backend/.env`. The sender email must be the same Google account that granted consent.
-8. Restart the backend. If an account is already awaiting verification, click **Resend code** once after the cooldown.
+### 4. Configure Gmail email delivery
 
-Never commit OAuth credentials. While an External OAuth app remains in Testing, Google can expire refresh tokens after seven days; generate a new refresh token or publish the consent configuration when appropriate.
+1. Open [Google Cloud Console](https://console.cloud.google.com/), create or
+   select a project, and enable the Gmail API.
+2. Configure the Google OAuth consent screen. For testing, add the sender Gmail
+   account as a test user.
+3. Add only `https://www.googleapis.com/auth/gmail.send`.
+4. Create an OAuth client of type **Web application**.
+5. Add `https://developers.google.com/oauthplayground` as an authorized
+   redirect URI.
+6. Open [OAuth 2.0 Playground](https://developers.google.com/oauthplayground),
+   enable **Use your own OAuth credentials**, and enter your client ID/secret.
+7. Authorize the `gmail.send` scope and exchange the code for a refresh token.
+8. Put the client ID, client secret, refresh token, sender email, and sender
+   name in `backend/.env`.
+9. Restart the backend.
 
-TURN is optional for basic local testing but recommended in production because some networks cannot establish a direct WebRTC connection.
+The sender email must be the Google account that granted consent. Google may
+expire refresh tokens for an external app left in Testing mode.
 
-### 4. Generate Prisma Client and apply migrations
+### 5. Prepare Prisma
 
 ```powershell
 cd backend
@@ -258,57 +398,66 @@ npx.cmd prisma migrate deploy
 cd ..
 ```
 
-### 5. Run the application
+Use `prisma migrate dev --name <migration_name>` only when creating a new local
+development migration.
 
-Open two terminals from the repository root.
+### 6. Run the application
 
-Backend:
+Backend terminal:
 
 ```powershell
 npm.cmd run dev:backend
 ```
 
-Frontend:
+Frontend terminal:
 
 ```powershell
 npm.cmd run dev:frontend
 ```
 
-Open [http://localhost:5173](http://localhost:5173). The REST API and Socket.IO server run at [http://localhost:4000](http://localhost:4000).
+Open:
 
-To test realtime behavior, register two different accounts and open them in separate browsers or one normal window and one private window.
+- Frontend: [http://localhost:5173](http://localhost:5173)
+- Backend/API and Socket.IO: [http://localhost:4000](http://localhost:4000)
+
+For realtime testing, use two registered accounts in different browser
+profiles, or one normal and one private window.
 
 ## Useful commands
 
 ```powershell
-# Build both workspaces
+# Build both npm workspaces
 npm.cmd run build
 
 # Build only one workspace
 npm.cmd run build --workspace=@chat/frontend
 npm.cmd run build --workspace=@chat/backend
 
-# Generate Prisma Client
-npm.cmd run prisma:generate --workspace=@chat/backend
+# Validate and generate Prisma Client
+cd backend
+npx.cmd prisma validate
+npx.cmd prisma generate
 
-# Create a development migration
-npm.cmd run prisma:migrate --workspace=@chat/backend
+# Apply committed migrations
+npx.cmd prisma migrate deploy
 ```
 
-## Main REST API groups
+## Main API groups
 
-All application endpoints use the `/api/v1` prefix.
+All API routes use the `/api/v1` prefix.
 
-- `/auth` - registration, login, refresh, logout, password change, and password reset
-- `/users` - current profile, avatar upload, and user search
-- `/conversations` - conversation list, direct-conversation creation, messages, seen state, and attachments
-- `/messages` - edit, soft-delete, and reaction operations
-- `/friends` - friend list and request lifecycle
-- `/attachments` - protected inline viewing and downloads
-- `/calls` - WebRTC configuration and persisted call history
-- `/health` - service health information
+- `/auth` — register, verify email, resend code, login, refresh, logout,
+  logout-all, password change, forgot password, and reset password
+- `/users` — current profile, avatar upload, and username search
+- `/conversations` — list/create conversations, read state, archive,
+  per-user delete, messages, seen state, and attachment upload
+- `/messages` — edit, soft-delete, and reactions
+- `/friends` — backend friend list and friend-request lifecycle
+- `/attachments` — protected inline viewing and downloads
+- `/calls` — WebRTC configuration and call history
+- `/health` — service health
 
-API responses use a consistent shape:
+API responses use a consistent envelope:
 
 ```json
 {
@@ -316,6 +465,67 @@ API responses use a consistent shape:
   "message": "Message sent.",
   "data": {}
 }
+```
+
+## Testing checklist
+
+1. Register two accounts and verify both six-digit email codes.
+2. Sign into each account in a separate browser session.
+3. Search for the other username and open a conversation.
+4. Send a text message and confirm the unread badge appears for the recipient.
+5. Open the conversation and confirm it changes to read/seen.
+6. Confirm typing, online status, and last-active status update in realtime.
+7. Upload an image, video, audio file, PDF, and document.
+8. Confirm an unrelated account cannot view or download the attachment.
+9. Record and send a voice message.
+10. Test message reactions, reply, edit, and the custom delete modal.
+11. Archive/delete a conversation and confirm it affects only that user.
+12. Test a voice call and a video call between both sessions.
+13. Switch light/dark themes and test desktop and mobile widths.
+
+## Troubleshooting
+
+### `EADDRINUSE: port 4000`
+
+Another backend process is already using port 4000. Stop that process before
+starting another development server:
+
+```powershell
+Get-NetTCPConnection -LocalPort 4000
+```
+
+Then stop the matching process from Task Manager or with `Stop-Process` after
+confirming the correct PID.
+
+### Redis unavailable
+
+Start Redis:
+
+```powershell
+docker compose up -d redis
+```
+
+The application can run without Redis as a single Socket.IO node, but
+cross-instance events and Redis-backed recovery require it.
+
+### Gmail sends no code
+
+- Confirm all four `GMAIL_*` credential values exist.
+- Confirm Gmail API is enabled.
+- Confirm the refresh token was created with your own OAuth client and the
+  `gmail.send` scope.
+- Confirm the sender email matches the account that granted consent.
+- Restart the backend after editing `.env`.
+- Check spam and the Gmail sent folder.
+
+### Prisma cannot connect
+
+Confirm MySQL is healthy and that `DATABASE_URL` uses port `3307` with the
+included Docker Compose configuration:
+
+```powershell
+docker compose ps
+npx.cmd prisma validate
 ```
 
 ## Additional documentation
@@ -329,4 +539,14 @@ API responses use a consistent shape:
 
 ## Production notes
 
-Before deploying, use strong secrets, HTTPS, production cookie settings, a managed MySQL/Redis service, durable object storage for uploads, a configured TURN server, reverse-proxy upload limits, monitoring, backups, and a cleanup policy for unlinked files. Run Prisma migrations with `prisma migrate deploy`, not `prisma migrate dev`, in production.
+Before deployment:
+
+- Use HTTPS and strong production secrets.
+- Use managed MySQL and Redis with backups.
+- Use durable object storage instead of local disk for uploaded files.
+- Configure a TURN server for reliable WebRTC connectivity.
+- Restrict CORS to the deployed frontend origin.
+- Configure reverse-proxy upload limits.
+- Add logging, monitoring, rate-limit storage, and orphan-file cleanup.
+- Run `prisma migrate deploy`, never `prisma migrate dev`, in production.
+
