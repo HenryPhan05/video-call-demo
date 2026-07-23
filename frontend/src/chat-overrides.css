@@ -484,7 +484,7 @@
 .chat-header {
   z-index: 2;
   min-height: 68px;
-  padding: 10px 18px;
+  padding: 10px 220px 10px 18px;
   background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid #e4e6eb;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
@@ -1451,25 +1451,76 @@
 .call-launcher {
   position: absolute;
   z-index: 8;
-  top: 13px;
+  top: 12px;
   right: 18px;
   display: flex;
-  gap: 7px;
+  align-items: center;
+  gap: 8px;
 }
 .call-launcher button {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: auto;
+  min-width: 92px;
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid #d8e2f0;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 750;
+  box-shadow: 0 5px 15px rgba(15, 23, 42, 0.09);
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+.call-launcher button svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+.call-launcher .voice-call-button {
   color: #0866ff;
+  background: #f5f8fc;
+}
+.call-launcher .video-call-button {
+  color: #fff;
+  background: #0866ff;
+  border-color: #0866ff;
+}
+.call-launcher .voice-call-button:hover {
+  color: #0056dd;
   background: #e7f3ff;
-  border-radius: 50%;
-  font-size: 1rem;
+  border-color: #b9d4ff;
+  transform: translateY(-1px);
+}
+.call-launcher .video-call-button:hover {
+  background: #0758dc;
+  border-color: #0758dc;
+  box-shadow: 0 8px 20px rgba(8, 102, 255, 0.28);
+  transform: translateY(-1px);
+}
+.call-launcher button:active {
+  box-shadow: none;
+  transform: translateY(0) scale(0.96);
+}
+.call-launcher button:focus-visible {
+  outline: 3px solid rgba(8, 102, 255, 0.28);
+  outline-offset: 2px;
 }
 .call-launcher button:disabled {
   opacity: 0.42;
   cursor: not-allowed;
+  transform: none;
 }
 .call-toast {
   position: fixed;
@@ -1844,10 +1895,30 @@
 :root[data-theme="dark"] .attach-button,
 :root[data-theme="dark"] .voice-recorder > button,
 :root[data-theme="dark"] .document-icon,
-:root[data-theme="dark"] .download-button,
-:root[data-theme="dark"] .call-launcher button {
+:root[data-theme="dark"] .download-button {
   color: #8bbcff;
   background: #172d4d;
+}
+:root[data-theme="dark"] .call-launcher .voice-call-button {
+  color: #8bbcff;
+  background: #172033;
+  border-color: #334155;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.24);
+}
+:root[data-theme="dark"] .call-launcher .voice-call-button:hover {
+  color: #bfdbfe;
+  background: #24324a;
+  border-color: #466489;
+}
+:root[data-theme="dark"] .call-launcher .video-call-button {
+  color: #fff;
+  background: #3b82f6;
+  border-color: #3b82f6;
+  box-shadow: 0 7px 20px rgba(37, 99, 235, 0.3);
+}
+:root[data-theme="dark"] .call-launcher .video-call-button:hover {
+  background: #2563eb;
+  border-color: #2563eb;
 }
 :root[data-theme="dark"] .settings-page {
   color: #f8fafc;
@@ -1990,11 +2061,21 @@
     min-height: 100dvh;
   }
   .chat-header {
-    padding: 9px 12px;
+    padding: 9px 108px 9px 12px;
   }
   .call-launcher {
     top: 12px;
     right: 10px;
+    gap: 6px;
+  }
+  .call-launcher button {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    padding: 0;
+  }
+  .call-launcher button span {
+    display: none;
   }
   .messages {
     padding: 14px 10px;

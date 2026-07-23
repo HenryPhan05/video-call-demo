@@ -13,6 +13,23 @@ type Ack<T = unknown> = {
   message?: string;
 };
 
+function PhoneIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7.2 3.5 9.8 8l-2.1 2.1a15.2 15.2 0 0 0 6.2 6.2l2.1-2.1 4.5 2.6-.8 3a2 2 0 0 1-2 1.5C9.4 20.5 3.5 14.6 2.7 6.3a2 2 0 0 1 1.5-2Z" />
+    </svg>
+  );
+}
+
+function VideoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3" y="6" width="12" height="12" rx="3" />
+      <path d="m15 10 5-3v10l-5-3Z" />
+    </svg>
+  );
+}
+
 export function CallManager({
   socket,
   conversationId,
@@ -340,24 +357,30 @@ export function CallManager({
 
   return (
     <>
-      <div className="call-launcher">
-        <button
-          type="button"
-          disabled={!enabled || phase !== "idle"}
-          onClick={() => void start("VOICE")}
-          aria-label="Start voice call"
-        >
-          ☎
-        </button>
-        <button
-          type="button"
-          disabled={!enabled || phase !== "idle"}
-          onClick={() => void start("VIDEO")}
-          aria-label="Start video call"
-        >
-          ▣
-        </button>
-      </div>
+      {enabled && phase === "idle" && (
+        <div className="call-launcher" aria-label="Call options">
+          <button
+            className="voice-call-button"
+            type="button"
+            onClick={() => void start("VOICE")}
+            aria-label="Start voice call"
+            title="Start voice call"
+          >
+            <PhoneIcon />
+            <span>Voice</span>
+          </button>
+          <button
+            className="video-call-button"
+            type="button"
+            onClick={() => void start("VIDEO")}
+            aria-label="Start video call"
+            title="Start video call"
+          >
+            <VideoIcon />
+            <span>Video</span>
+          </button>
+        </div>
+      )}
       {error && phase === "idle" && <div className="call-toast">{error}</div>}
       {phase !== "idle" && (
         <div
