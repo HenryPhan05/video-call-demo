@@ -39,6 +39,20 @@ export class UserRepository {
     });
   }
 
+  findPresenceByIds(ids: string[]) {
+    return prisma.user.findMany({
+      where: {
+        id: {
+          in: ids,
+        },
+      },
+      select: {
+        id: true,
+        lastSeenAt: true,
+      },
+    });
+  }
+
   create(input: {
     firstName: string;
     lastName?: string;

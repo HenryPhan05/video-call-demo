@@ -75,6 +75,9 @@ export type Conversation = {
   id: string;
   title: string;
   avatarUrl?: string | null;
+  otherUserId?: string | null;
+  lastSeenAt?: string | null;
+  unreadCount: number;
   lastMessage: Message | null;
 };
 
@@ -187,6 +190,31 @@ export const startConversation = (userId: string) =>
     .then(body<Conversation>);
 export const getConversations = () =>
   apiClient.get("/conversations").then(body<Conversation[]>);
+export const setConversationReadState = (id: string, unread: boolean) =>
+  apiClient
+    .patch(`/conversations/${id}/read-state`, {
+      unread,
+    })
+    .then(
+      body<{
+        conversationId: string;
+        unreadCount: number;
+      }>,
+    );
+export const archiveConversation = (id: string) =>
+  apiClient.patch(`/conversations/${id}/archive`).then(
+    body<{
+      conversationId: string;
+      archived: true;
+    }>,
+  );
+export const deleteConversationForMe = (id: string) =>
+  apiClient.delete(`/conversations/${id}`).then(
+    body<{
+      conversationId: string;
+      deleted: true;
+    }>,
+  );
 export const getMessages = (id: string) =>
   apiClient.get(`/conversations/${id}/messages`).then(body<Message[]>);
 

@@ -48,11 +48,18 @@ const messageInclude = {
 } as const;
 
 export class MessageRepository {
-  list(conversationId: string) {
+  list(conversationId: string, after?: Date | null) {
     return prisma.message.findMany({
       where: {
         conversationId,
         deletedAt: null,
+        ...(after
+          ? {
+              createdAt: {
+                gt: after,
+              },
+            }
+          : {}),
       },
       include: messageInclude,
       orderBy: {
@@ -198,6 +205,8 @@ export class MessageRepository {
             unreadCount: {
               increment: 1,
             },
+            archivedAt: null,
+            deletedAt: null,
           },
         });
       }

@@ -12,6 +12,9 @@ import { io, Socket } from "socket.io-client";
 import axios from "axios";
 
 import {
+  archiveConversation,
+  Conversation,
+  deleteConversationForMe,
   deleteMessage,
   forgotPassword,
   getConversations,
@@ -25,6 +28,7 @@ import {
   resetPassword,
   resendVerification,
   searchUsers,
+  setConversationReadState,
   sendMessage,
   startConversation,
   toggleReaction,
@@ -73,14 +77,56 @@ function AvatarContent({
   );
 }
 
+const conversationActionMessage = (cause: unknown, fallback: string) => {
+  if (!axios.isAxiosError(cause)) return fallback;
+  if (!cause.response) {
+    return "Cannot connect to the backend. Start or restart the backend on port 4000.";
+  }
+  const serverMessage =
+    typeof cause.response.data?.message === "string"
+      ? cause.response.data.message
+      : "";
+  if (
+    cause.response.status === 404 &&
+    serverMessage.startsWith("Route ")
+  ) {
+    return "The backend is still running an older version. Restart the backend to enable conversation options.";
+  }
+  return serverMessage || fallback;
+};
+
 type NavigateOptions = {
   replace?: boolean;
 };
 
 type Navigate = (path: string, options?: NavigateOptions) => void;
 type Theme = "light" | "dark";
+type Presence = {
+  status: "online" | "offline";
+  lastSeenAt?: string | null;
+};
 
 const themeStorageKey = "chatting.theme";
+
+const formatLastActive = (lastSeenAt?: string | null, now = Date.now()) => {
+  if (!lastSeenAt) return "Offline";
+  const elapsed = Math.max(0, now - new Date(lastSeenAt).getTime());
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 1) return "Active just now";
+  if (minutes < 60)
+    return `Active ${minutes} ${minutes === 1 ? "minute" : "minutes"} ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24)
+    return `Active ${hours} ${hours === 1 ? "hour" : "hours"} ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7)
+    return `Active ${days} ${days === 1 ? "day" : "days"} ago`;
+
+  const weeks = Math.floor(days / 7);
+  return `Active ${weeks} ${weeks === 1 ? "week" : "weeks"} ago`;
+};
 
 const initialTheme = (): Theme => {
   const saved = localStorage.getItem(themeStorageKey);
@@ -1221,6 +1267,7 @@ function Chat({
   const socketRef = useRef<Socket | null>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const markingSeenRef = useRef(new Set<string>());
   const [conversationId, setConversationId] = useState(() =>
     conversationIdFromPath(path),
   );
@@ -1239,6 +1286,17 @@ function Chat({
     path === "/settings" ? "settings" : "chat",
   );
   const [socketClient, setSocketClient] = useState<Socket | null>(null);
+  const [conversationMenuId, setConversationMenuId] = useState<string | null>(
+    null,
+  );
+  const [conversationActionError, setConversationActionError] = useState("");
+  const [presenceByUser, setPresenceByUser] = useState<
+    Record<string, Presence>
+  >({});
+  const [presenceNow, setPresenceNow] = useState(() => Date.now());
+  const [documentVisible, setDocumentVisible] = useState(
+    () => document.visibilityState !== "hidden",
+  );
 
   const conversations = useQuery({
     queryKey: ["conversations"],
@@ -1260,6 +1318,81 @@ function Chat({
   const activeConversation = conversations.data?.find(
     (conversation) => conversation.id === conversationId,
   );
+  const activePresence = activeConversation?.otherUserId
+    ? presenceByUser[activeConversation.otherUserId]
+    : undefined;
+  const activeUserOnline = activePresence?.status === "online";
+  const activeLastSeenAt =
+    activePresence?.lastSeenAt ?? activeConversation?.lastSeenAt;
+
+  const syncConversationSeen = useCallback(
+    async (id: string) => {
+      if (markingSeenRef.current.has(id)) return;
+      markingSeenRef.current.add(id);
+
+      try {
+        const result = await markConversationSeen(id);
+
+        queryClient.setQueryData<Conversation[]>(
+          ["conversations"],
+          (current = []) =>
+            current.map((conversation) =>
+              conversation.id === id
+                ? {
+                    ...conversation,
+                    unreadCount: 0,
+                  }
+                : conversation,
+            ),
+        );
+        queryClient.setQueryData<Message[]>(
+          ["messages", id],
+          (current = []) =>
+            current.map((message) =>
+              message.senderId === user.id
+                ? message
+                : {
+                    ...message,
+                    receipts: message.receipts?.map((receipt) =>
+                      receipt.userId === user.id
+                        ? {
+                            ...receipt,
+                            deliveredAt: receipt.deliveredAt ?? result.seenAt,
+                            seenAt: result.seenAt,
+                          }
+                        : receipt,
+                    ),
+                  },
+            ),
+        );
+      } finally {
+        markingSeenRef.current.delete(id);
+      }
+    },
+    [queryClient, user.id],
+  );
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setDocumentVisible(document.visibilityState !== "hidden");
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setPresenceNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!conversationMenuId) return;
+    const closeMenu = () => setConversationMenuId(null);
+    window.addEventListener("click", closeMenu);
+    return () => window.removeEventListener("click", closeMenu);
+  }, [conversationMenuId]);
 
   useEffect(() => {
     if (path === "/settings") {
@@ -1299,6 +1432,51 @@ function Chat({
         queryKey: ["conversations"],
       });
     });
+    socket.on(
+      "presence:update",
+      ({
+        userId,
+        status,
+        lastSeenAt,
+      }: {
+        userId: string;
+        status: "online" | "offline";
+        lastSeenAt?: string | null;
+      }) => {
+        setPresenceByUser((current) => ({
+          ...current,
+          [userId]: {
+            status,
+            lastSeenAt,
+          },
+        }));
+        setPresenceNow(Date.now());
+      },
+    );
+    socket.on(
+      "presence:snapshot",
+      (
+        snapshot: {
+          userId: string;
+          status: "online" | "offline";
+          lastSeenAt?: string | null;
+        }[],
+      ) => {
+        setPresenceByUser((current) => {
+          const next = {
+            ...current,
+          };
+          for (const presence of snapshot) {
+            next[presence.userId] = {
+              status: presence.status,
+              lastSeenAt: presence.lastSeenAt,
+            };
+          }
+          return next;
+        });
+        setPresenceNow(Date.now());
+      },
+    );
     socket.on("message:update", (message: Message) => {
       queryClient.setQueryData<Message[]>(
         ["messages", message.conversationId],
@@ -1357,6 +1535,29 @@ function Chat({
   }, [queryClient]);
 
   useEffect(() => {
+    if (!socketClient) return;
+    const userIds = [
+      ...new Set(
+        (conversations.data ?? [])
+          .map((conversation) => conversation.otherUserId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    if (!userIds.length) return;
+
+    const requestPresence = () => {
+      socketClient.emit("presence:request", {
+        userIds,
+      });
+    };
+    socketClient.on("connect", requestPresence);
+    if (socketClient.connected) requestPresence();
+    return () => {
+      socketClient.off("connect", requestPresence);
+    };
+  }, [conversations.data, socketClient]);
+
+  useEffect(() => {
     const hasUnseen = messages.data?.some(
       (message) =>
         message.senderId !== user.id &&
@@ -1364,10 +1565,26 @@ function Chat({
           (receipt) => receipt.userId === user.id && !receipt.seenAt,
         ),
     );
-    if (conversationId && hasUnseen) {
-      void markConversationSeen(conversationId);
+    const hasUnreadConversation = (activeConversation?.unreadCount ?? 0) > 0;
+
+    if (
+      conversationId &&
+      page === "chat" &&
+      documentVisible &&
+      (hasUnseen || hasUnreadConversation)
+    ) {
+      void syncConversationSeen(conversationId).catch(() => undefined);
     }
-  }, [conversationId, messages.dataUpdatedAt, messages.data, user.id]);
+  }, [
+    activeConversation?.unreadCount,
+    conversationId,
+    documentVisible,
+    messages.data,
+    messages.dataUpdatedAt,
+    page,
+    syncConversationSeen,
+    user.id,
+  ]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({
@@ -1384,6 +1601,78 @@ function Chat({
       });
       setConversationId(conversation.id);
       navigate(`/conversations/${encodeURIComponent(conversation.id)}`);
+    },
+  });
+
+  const readState = useMutation({
+    mutationFn: ({
+      id,
+      unread,
+    }: {
+      id: string;
+      unread: boolean;
+    }) => setConversationReadState(id, unread),
+    onSuccess: (result) => {
+      setConversationMenuId(null);
+      setConversationActionError("");
+      queryClient.setQueryData<Conversation[]>(
+        ["conversations"],
+        (current = []) =>
+          current.map((conversation) =>
+            conversation.id === result.conversationId
+              ? {
+                ...conversation,
+                unreadCount: result.unreadCount,
+              }
+              : conversation,
+          ),
+      );
+    },
+    onError: (cause) => {
+      setConversationActionError(
+        conversationActionMessage(cause, "Unable to update conversation."),
+      );
+    },
+  });
+
+  const hideConversationLocally = (id: string) => {
+    setConversationMenuId(null);
+    setConversationActionError("");
+    queryClient.setQueryData<Conversation[]>(
+      ["conversations"],
+      (current = []) =>
+        current.filter((conversation) => conversation.id !== id),
+    );
+    if (conversationId === id) {
+      setConversationId("");
+      navigate("/conversations", {
+        replace: true,
+      });
+    }
+  };
+
+  const archive = useMutation({
+    mutationFn: archiveConversation,
+    onSuccess: (result) => hideConversationLocally(result.conversationId),
+    onError: (cause) => {
+      setConversationActionError(
+        conversationActionMessage(cause, "Unable to archive conversation."),
+      );
+    },
+  });
+
+  const removeConversation = useMutation({
+    mutationFn: deleteConversationForMe,
+    onSuccess: (result) => {
+      queryClient.removeQueries({
+        queryKey: ["messages", result.conversationId],
+      });
+      hideConversationLocally(result.conversationId);
+    },
+    onError: (cause) => {
+      setConversationActionError(
+        conversationActionMessage(cause, "Unable to delete conversation."),
+      );
     },
   });
 
@@ -1584,32 +1873,121 @@ function Chat({
           </p>
         )}
         <p className="section-label">CONVERSATIONS</p>
+        {conversationActionError && (
+          <p className="conversation-action-error">
+            {conversationActionError}
+          </p>
+        )}
         {conversations.data?.map((conversation) => (
-          <button
-            className={`conversation ${conversation.id === conversationId && page === "chat" ? "active" : ""}`}
+          <div
+            className={`conversation-item ${
+              conversation.id === conversationId && page === "chat"
+                ? "active"
+                : ""
+            }`}
             key={conversation.id}
-            onClick={() => {
-              setPage("chat");
-              selectConversation(conversation.id);
-              navigate(`/conversations/${encodeURIComponent(conversation.id)}`);
-            }}
-            disabled={recordingVoice}
           >
-            <span className="avatar">
-              <AvatarContent
-                url={conversation.avatarUrl}
-                label={conversation.title}
-              />
-            </span>
-            <span>
-              <strong>{conversation.title}</strong>
-              <small>
-                {conversation.lastMessage?.text ??
-                  conversation.lastMessage?.body ??
-                  "No messages yet"}
-              </small>
-            </span>
-          </button>
+            <button
+              className={`conversation conversation-main ${
+                conversation.unreadCount > 0 ? "unread" : ""
+              }`}
+              type="button"
+              onClick={() => {
+                setPage("chat");
+                selectConversation(conversation.id);
+                navigate(
+                  `/conversations/${encodeURIComponent(conversation.id)}`,
+                );
+              }}
+              disabled={recordingVoice}
+            >
+              <span className="avatar">
+                <AvatarContent
+                  url={conversation.avatarUrl}
+                  label={conversation.title}
+                />
+              </span>
+              <span className="conversation-copy">
+                <strong>{conversation.title}</strong>
+                <small>
+                  {conversation.lastMessage?.text ??
+                    conversation.lastMessage?.body ??
+                    "No messages yet"}
+                </small>
+              </span>
+              {conversation.unreadCount > 0 && (
+                <span
+                  className="conversation-unread-count"
+                  aria-label={`${conversation.unreadCount} unread messages`}
+                >
+                  {conversation.unreadCount}
+                </span>
+              )}
+            </button>
+            <button
+              className="conversation-options-button"
+              type="button"
+              aria-label={`Options for ${conversation.title}`}
+              aria-expanded={conversationMenuId === conversation.id}
+              onClick={(event) => {
+                event.stopPropagation();
+                setConversationActionError("");
+                setConversationMenuId((current) =>
+                  current === conversation.id ? null : conversation.id,
+                );
+              }}
+            >
+              ⋯
+            </button>
+            {conversationMenuId === conversation.id && (
+              <div
+                className="conversation-options-menu"
+                role="menu"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() =>
+                    readState.mutate({
+                      id: conversation.id,
+                      unread: conversation.unreadCount === 0,
+                    })
+                  }
+                  disabled={readState.isPending}
+                >
+                  {conversation.unreadCount > 0
+                    ? "Mark as read"
+                    : "Mark as unread"}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => archive.mutate(conversation.id)}
+                  disabled={archive.isPending}
+                >
+                  Archive conversation
+                </button>
+                <button
+                  className="delete-conversation-option"
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    if (
+                      confirm(
+                        "Delete this conversation for you? The other user will keep their copy.",
+                      )
+                    ) {
+                      removeConversation.mutate(conversation.id);
+                    }
+                  }}
+                  disabled={removeConversation.isPending}
+                >
+                  Delete conversation
+                </button>
+              </div>
+            )}
+          </div>
         ))}
         <button
           className={`settings-link ${page === "settings" ? "active" : ""}`}
@@ -1665,7 +2043,16 @@ function Chat({
               </span>
               <div>
                 <h2>{activeConversation.title}</h2>
-                <p>Active conversation</p>
+                <p
+                  className={`user-presence ${
+                    activeUserOnline ? "online" : "offline"
+                  }`}
+                >
+                  <span className="presence-dot" aria-hidden="true" />
+                  {activeUserOnline
+                    ? "Online"
+                    : formatLastActive(activeLastSeenAt, presenceNow)}
+                </p>
               </div>
             </header>
           )}
@@ -1786,17 +2173,11 @@ function Chat({
                 </div>
               );
             })}
-            {Boolean(typingUsers[conversationId]?.length) && (
-              <div className="typing-indicator">
-                <span />
-                <span />
-                <span /> typing
-              </div>
-            )}
             <div ref={messagesEndRef} />
           </div>
 
           <FileDropZone
+            className="composer-drop-zone"
             disabled={Boolean(editing || recordingVoice || voiceFile)}
             onFiles={(newFiles) =>
               !editing &&
@@ -1805,6 +2186,31 @@ function Chat({
               setFiles((current) => [...current, ...newFiles])
             }
           >
+            {Boolean(typingUsers[conversationId]?.length) && (
+              <div
+                className="typing-indicator"
+                role="status"
+                aria-live="polite"
+              >
+                <span className="typing-avatar" aria-hidden="true">
+                  <AvatarContent
+                    url={activeConversation?.avatarUrl}
+                    label={activeConversation?.title ?? "User"}
+                  />
+                </span>
+                <span className="typing-content">
+                  <span className="typing-dots" aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span className="typing-label">
+                    <strong>{activeConversation?.title ?? "Someone"}</strong>
+                    {" is typing"}
+                  </span>
+                </span>
+              </div>
+            )}
             <form
               className="composer"
               onSubmit={(event: FormEvent) => {

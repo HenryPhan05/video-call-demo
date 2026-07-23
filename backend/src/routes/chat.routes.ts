@@ -7,7 +7,10 @@ import {
   reactionSchema,
   updateMessageSchema,
 } from "../validators/chat.validators";
-import { createDirectConversationSchema } from "../validators/conversation.validators";
+import {
+  conversationReadStateSchema,
+  createDirectConversationSchema,
+} from "../validators/conversation.validators";
 import * as conversations from "../controllers/conversation.controller";
 import * as messages from "../controllers/message.controller";
 import * as users from "../controllers/user.controller";
@@ -29,6 +32,19 @@ chatRouter.post(
   "/conversations",
   validate(createDirectConversationSchema),
   asyncHandler(conversations.createDirect),
+);
+chatRouter.patch(
+  "/conversations/:conversationId/read-state",
+  validate(conversationReadStateSchema),
+  asyncHandler(conversations.setReadState),
+);
+chatRouter.patch(
+  "/conversations/:conversationId/archive",
+  asyncHandler(conversations.archive),
+);
+chatRouter.delete(
+  "/conversations/:conversationId",
+  asyncHandler(conversations.removeForUser),
 );
 chatRouter.get(
   "/conversations/:conversationId/messages",

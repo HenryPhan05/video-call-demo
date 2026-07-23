@@ -7,8 +7,8 @@ const messages = new MessageRepository();
 
 export class MessageService {
   async list(conversationId: string, userId: string) {
-    await conversations.assertMember(conversationId, userId);
-    return messages.list(conversationId);
+    const member = await conversations.assertMember(conversationId, userId);
+    return messages.list(conversationId, member.clearedAt);
   }
 
   async create(

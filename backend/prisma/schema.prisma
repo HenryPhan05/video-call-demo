@@ -195,6 +195,8 @@ model Participant {
   role           ParticipantRole @default(MEMBER)
   pinnedAt       DateTime?
   archivedAt     DateTime?
+  deletedAt      DateTime?
+  clearedAt      DateTime?
   unreadCount    Int             @default(0)
   conversation   Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -202,6 +204,7 @@ model Participant {
   @@unique([conversationId, userId])
   @@index([userId])
   @@index([userId, archivedAt, pinnedAt])
+  @@index([userId, deletedAt, archivedAt])
 }
 
 model Message {
