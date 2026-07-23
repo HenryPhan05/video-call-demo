@@ -93,7 +93,10 @@
   overflow: hidden;
   border-radius: 50%;
 }
-.profile-avatar img {
+.profile-avatar img,
+.chat .avatar img,
+.message-avatar img,
+.mini-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -101,8 +104,10 @@
 
 .chat .profile > span,
 .chat .avatar {
+  overflow: hidden;
   color: #fff;
   background: linear-gradient(135deg, #0866ff, #8b5cf6);
+  border-radius: 50%;
 }
 
 .chat .profile small {
@@ -149,6 +154,14 @@
 .chat .conversation small {
   color: #65676b;
 }
+.user-search-status {
+  margin: 7px 10px 2px;
+  color: #65676b;
+  font-size: 0.78rem;
+}
+.user-search-status.not-found {
+  color: #dc2626;
+}
 
 .chat > aside > .settings-link {
   display: flex;
@@ -180,9 +193,13 @@
 .chat > aside > button:last-child {
   margin: auto 8px 0;
   padding: 10px;
-  color: #65676b;
+  color: #dc2626;
   background: #f0f2f5;
   border-radius: 10px;
+}
+.chat > aside > button:last-child:hover {
+  color: #b91c1c;
+  background: #fee2e2;
 }
 
 .thread {
@@ -229,8 +246,25 @@
 }
 
 .message.theirs {
+  position: relative;
   margin-right: auto;
+  margin-left: 38px;
   border-bottom-left-radius: 5px;
+}
+.message-avatar {
+  position: absolute;
+  bottom: 0;
+  left: -38px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  overflow: hidden;
+  color: #fff;
+  background: linear-gradient(135deg, #0866ff, #8b5cf6);
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 .message.mine {
   margin-left: auto;
@@ -879,6 +913,185 @@
   cursor: not-allowed;
 }
 
+.avatar-cropper-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 10, 20, 0.72);
+  backdrop-filter: blur(8px);
+}
+.avatar-cropper {
+  width: min(460px, 100%);
+  overflow: hidden;
+  color: #050505;
+  background: #fff;
+  border: 1px solid #d9dce1;
+  border-radius: 22px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+}
+.avatar-cropper > header {
+  display: flex;
+  justify-content: space-between;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid #e4e6eb;
+}
+.avatar-cropper > header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+.avatar-cropper > header p {
+  margin: 4px 0 0;
+  color: #65676b;
+  font-size: 0.8rem;
+}
+.avatar-cropper > header > button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: #65676b;
+  background: #f0f2f5;
+  border-radius: 50%;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+.avatar-crop-viewport {
+  position: relative;
+  width: 280px;
+  height: 280px;
+  margin: 24px auto;
+  overflow: hidden;
+  background:
+    linear-gradient(45deg, #d8dce3 25%, transparent 25%),
+    linear-gradient(-45deg, #d8dce3 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #d8dce3 75%),
+    linear-gradient(-45deg, transparent 75%, #d8dce3 75%),
+    #f1f3f7;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+  background-size: 16px 16px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2px #0866ff,
+    0 12px 32px rgba(0, 0, 0, 0.18);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.avatar-crop-viewport.dragging {
+  cursor: grabbing;
+}
+.avatar-crop-viewport > img {
+  position: absolute;
+  max-width: none;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  user-select: none;
+}
+.avatar-crop-guide {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
+  pointer-events: none;
+}
+.avatar-zoom-control {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
+  align-items: end;
+  gap: 12px;
+  padding: 0 24px 20px;
+}
+.avatar-zoom-control > button {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  color: #0866ff;
+  background: #e7f3ff;
+  border-radius: 50%;
+  font-size: 1.2rem;
+}
+.avatar-zoom-control > button:disabled {
+  opacity: 0.45;
+}
+.avatar-zoom-control label {
+  display: grid;
+  gap: 7px;
+  color: #65676b;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.avatar-zoom-control input {
+  width: 100%;
+  accent-color: #0866ff;
+}
+.avatar-crop-error {
+  margin: 0 24px 14px;
+  color: #b42318;
+  font-size: 0.8rem;
+}
+.avatar-cropper > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 22px;
+  background: #f7f8fa;
+  border-top: 1px solid #e4e6eb;
+}
+.avatar-cropper > footer button {
+  min-width: 96px;
+  padding: 10px 15px;
+  color: #050505;
+  background: #e4e6eb;
+  border-radius: 10px;
+}
+.avatar-cropper > footer .apply-avatar-crop {
+  color: #fff;
+  background: #0866ff;
+}
+.avatar-cropper > footer button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+:root[data-theme="dark"] .avatar-cropper {
+  color: #f8fafc;
+  background: #0f172a;
+  border-color: #334155;
+}
+:root[data-theme="dark"] .avatar-cropper > header,
+:root[data-theme="dark"] .avatar-cropper > footer {
+  border-color: #334155;
+}
+:root[data-theme="dark"] .avatar-cropper > header p,
+:root[data-theme="dark"] .avatar-zoom-control label {
+  color: #94a3b8;
+}
+:root[data-theme="dark"] .avatar-cropper > header > button,
+:root[data-theme="dark"] .avatar-cropper > footer button {
+  color: #e5edf8;
+  background: #1e293b;
+}
+:root[data-theme="dark"] .avatar-cropper > footer {
+  background: #111c30;
+}
+:root[data-theme="dark"] .avatar-cropper > footer .apply-avatar-crop {
+  color: #fff;
+  background: #3b82f6;
+}
+:root[data-theme="dark"] .avatar-zoom-control > button {
+  color: #8bbcff;
+  background: #172d4d;
+}
+
 .call-launcher {
   position: absolute;
   z-index: 8;
@@ -1058,9 +1271,12 @@
   background: #24324a;
 }
 :root[data-theme="dark"] .chat .profile,
-:root[data-theme="dark"] .chat > aside > label input,
-:root[data-theme="dark"] .chat > aside > button:last-child {
+:root[data-theme="dark"] .chat > aside > label input {
   color: #f8fafc;
+  background: #172033;
+}
+:root[data-theme="dark"] .chat > aside > button:last-child {
+  color: #f87171;
   background: #172033;
 }
 :root[data-theme="dark"] .profile-button:hover,
@@ -1069,9 +1285,18 @@
 }
 :root[data-theme="dark"] .chat > aside > label,
 :root[data-theme="dark"] .chat .section-label,
-:root[data-theme="dark"] .chat .conversation small,
-:root[data-theme="dark"] .chat > aside > button:last-child {
+:root[data-theme="dark"] .chat .conversation small {
   color: #94a3b8;
+}
+:root[data-theme="dark"] .user-search-status {
+  color: #94a3b8;
+}
+:root[data-theme="dark"] .user-search-status.not-found {
+  color: #f87171;
+}
+:root[data-theme="dark"] .chat > aside > button:last-child:hover {
+  color: #fca5a5;
+  background: #451a1a;
 }
 :root[data-theme="dark"] .chat .conversation,
 :root[data-theme="dark"] .chat > aside > .settings-link {

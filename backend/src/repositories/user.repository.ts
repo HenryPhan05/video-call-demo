@@ -144,29 +144,12 @@ export class UserRepository {
     });
   }
 
-  search(query: string) {
-    return prisma.user.findMany({
+  findPublicByUsername(username: string) {
+    return prisma.user.findUnique({
       where: {
-        OR: [
-          {
-            firstName: {
-              contains: query,
-            },
-          },
-          {
-            lastName: {
-              contains: query,
-            },
-          },
-          {
-            username: {
-              contains: query,
-            },
-          },
-        ],
+        username,
       },
       select: publicUserSelect,
-      take: 20,
     });
   }
 }

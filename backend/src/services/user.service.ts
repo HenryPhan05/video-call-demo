@@ -18,8 +18,12 @@ export class UserService {
     return safe;
   }
 
-  search(query: string) {
-    return users.search(query);
+  async search(query: string) {
+    const username = query.trim().toLowerCase();
+    if (username.length < 5 || username.length > 30) return [];
+
+    const user = await users.findPublicByUsername(username);
+    return user ? [user] : [];
   }
 
   async update(id: string, input: ProfileUpdate) {

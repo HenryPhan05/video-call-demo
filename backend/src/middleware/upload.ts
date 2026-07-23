@@ -1,6 +1,10 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import multer from "multer";
+import {
+  attachmentUploadDirectory,
+  avatarUploadDirectory,
+} from "../config/upload-paths";
 import { AppError } from "../utils/app-error";
 const imageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const allowed = new Set([
@@ -20,7 +24,7 @@ const allowed = new Set([
 ]);
 export const avatarUpload = multer({
   storage: multer.diskStorage({
-    destination: "uploads/avatars",
+    destination: avatarUploadDirectory,
     filename: (_req, file, cb) =>
       cb(
         null,
@@ -34,7 +38,7 @@ export const avatarUpload = multer({
 }).single("avatar");
 export const attachmentUpload = multer({
   storage: multer.diskStorage({
-    destination: "uploads/attachments",
+    destination: attachmentUploadDirectory,
     filename: (_req, file, cb) =>
       cb(
         null,

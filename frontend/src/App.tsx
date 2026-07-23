@@ -41,11 +41,37 @@ import { AttachmentPreview } from "./components/chat/AttachmentPreview";
 import { AttachmentMessage } from "./components/chat/AttachmentMessage";
 import { VoiceRecorder } from "./components/chat/VoiceRecorder";
 import { CallManager } from "./components/chat/CallManager";
+import { AvatarCropper } from "./components/profile/AvatarCropper";
 
 const AuthBackground = lazy(() => import("./components/auth/AuthBackground"));
 
 const SOCKET_URL = "http://localhost:4000";
-const avatarUrl = (url?: string | null) => (url ? `${SOCKET_URL}${url}` : "");
+const avatarUrl = (url?: string | null) => {
+  if (!url) return "";
+  if (/^(?:blob:|data:|https?:\/\/)/i.test(url)) return url;
+  return `${SOCKET_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+};
+
+function AvatarContent({
+  url,
+  label,
+}: {
+  url?: string | null;
+  label: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const source = avatarUrl(url);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [source]);
+
+  return source && !failed ? (
+    <img src={source} alt="" onError={() => setFailed(true)} />
+  ) : (
+    <>{label[0]?.toUpperCase() ?? "?"}</>
+  );
+}
 
 type NavigateOptions = {
   replace?: boolean;
@@ -1225,9 +1251,12 @@ function Chat({
   });
   const userResults = useQuery({
     queryKey: ["user-search", userQuery],
-    queryFn: () => searchUsers(userQuery),
-    enabled: userQuery.trim().length >= 2,
+    queryFn: () => searchUsers(userQuery.trim()),
+    enabled: userQuery.trim().length >= 5,
   });
+  const matchingUsers = (userResults.data ?? []).filter(
+    (result) => result.id !== user.id,
+  );
   const activeConversation = conversations.data?.find(
     (conversation) => conversation.id === conversationId,
   );
@@ -1502,14 +1531,10 @@ function Chat({
           }}
         >
           <span className="profile-avatar">
-            {user.avatarUrl ? (
-              <img src={avatarUrl(user.avatarUrl)} alt="" />
-            ) : (
-              user.name[0]?.toUpperCase()
-            )}
+            <AvatarContent url={user.avatarUrl} label={user.username} />
           </span>
           <div>
-            <strong>{user.name}</strong>
+            <strong>{user.username}</strong>
             <small>Online</small>
           </div>
         </button>
@@ -1518,25 +1543,46 @@ function Chat({
           <input
             value={userQuery}
             onChange={(event) => setUserQuery(event.target.value)}
-            placeholder="Search by name"
+            placeholder="Search by username"
           />
         </label>
-        {userResults.data
-          ?.filter((result) => result.id !== user.id)
-          .map((result) => (
-            <button
-              className="conversation"
-              key={result.id}
-              onClick={() => startChat.mutate(result.id)}
-              disabled={startChat.isPending || recordingVoice}
-            >
-              <span className="avatar">{result.name[0]?.toUpperCase()}</span>
-              <span>
-                <strong>{result.name}</strong>
-                <small>Start conversation</small>
-              </span>
-            </button>
-          ))}
+        {matchingUsers.map((result) => (
+          <button
+            className="conversation"
+            key={result.id}
+            onClick={() => startChat.mutate(result.id)}
+            disabled={startChat.isPending || recordingVoice}
+          >
+            <span className="avatar">
+              <AvatarContent url={result.avatarUrl} label={result.username} />
+            </span>
+            <span>
+              <strong>{result.username}</strong>
+              <small>Start conversation</small>
+            </span>
+          </button>
+        ))}
+        {userQuery.trim().length > 0 && userQuery.trim().length < 5 && (
+          <p className="user-search-status">Enter at least 5 characters.</p>
+        )}
+        {userQuery.trim().length >= 5 && userResults.isFetching && (
+          <p className="user-search-status">Searching...</p>
+        )}
+        {userQuery.trim().length >= 5 &&
+          userResults.isSuccess &&
+          !userResults.isFetching &&
+          matchingUsers.length === 0 && (
+          <p className="user-search-status not-found">
+            {userResults.data?.some((result) => result.id === user.id)
+              ? "That is your username."
+              : "User not found."}
+          </p>
+        )}
+        {userResults.isError && (
+          <p className="user-search-status not-found">
+            Unable to search right now.
+          </p>
+        )}
         <p className="section-label">CONVERSATIONS</p>
         {conversations.data?.map((conversation) => (
           <button
@@ -1550,7 +1596,10 @@ function Chat({
             disabled={recordingVoice}
           >
             <span className="avatar">
-              {conversation.title[0]?.toUpperCase()}
+              <AvatarContent
+                url={conversation.avatarUrl}
+                label={conversation.title}
+              />
             </span>
             <span>
               <strong>{conversation.title}</strong>
@@ -1609,7 +1658,10 @@ function Chat({
           {activeConversation && (
             <header className="chat-header">
               <span className="avatar large">
-                {activeConversation.title[0]?.toUpperCase()}
+                <AvatarContent
+                  url={activeConversation.avatarUrl}
+                  label={activeConversation.title}
+                />
               </span>
               <div>
                 <h2>{activeConversation.title}</h2>
@@ -1637,6 +1689,14 @@ function Chat({
                   className={`message ${mine ? "mine" : "theirs"}`}
                   key={message.id}
                 >
+                  {!mine && (
+                    <span className="message-avatar">
+                      <AvatarContent
+                        url={message.sender?.avatarUrl}
+                        label={message.sender?.name ?? "User"}
+                      />
+                    </span>
+                  )}
                   {message.replyTo && (
                     <div className="reply-quote">
                       <strong>{message.replyTo.sender.name}</strong>
@@ -1665,7 +1725,10 @@ function Chat({
                         {(message.reactions ?? []).map((reaction) => (
                           <div key={reaction.id}>
                             <span className="mini-avatar">
-                              {reaction.user?.name[0]?.toUpperCase() ?? "?"}
+                              <AvatarContent
+                                url={reaction.user?.avatarUrl}
+                                label={reaction.user?.name ?? "User"}
+                              />
                             </span>
                             <strong>{reaction.user?.name ?? "User"}</strong>
                             <span>{reaction.emoji}</span>
@@ -1898,6 +1961,7 @@ function SettingsPage({
   const [lastName, setLastName] = useState(user.lastName ?? "");
   const [username, setUsername] = useState(user.username);
   const [avatar, setAvatar] = useState<File | null>(null);
+  const [cropSource, setCropSource] = useState<File | null>(null);
   const [preview, setPreview] = useState(avatarUrl(user.avatarUrl));
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
@@ -1938,6 +2002,7 @@ function SettingsPage({
         user: updated,
       });
       setAvatar(null);
+      setCropSource(null);
       setProgress(0);
       setSuccess("Your profile has been updated.");
       await Promise.all([
@@ -1961,124 +2026,143 @@ function SettingsPage({
   });
 
   return (
-    <main className="settings-page">
-      <header className="settings-header">
-        <button type="button" onClick={onBack} aria-label="Back to messages">
-          <BackIcon />
-        </button>
-        <div>
-          <h2>Settings</h2>
-          <p>Manage your public chat profile</p>
-        </div>
-      </header>
-      <section className="settings-card">
-        <div className="settings-avatar">
-          <span>
-            {preview ? (
-              <img src={preview} alt="Avatar preview" />
-            ) : (
-              firstName[0]?.toUpperCase()
-            )}
-          </span>
-          <div>
-            <h3>Profile photo</h3>
-            <p>JPG, PNG or WebP. Maximum 5 MB.</p>
-          </div>
-        </div>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!save.isPending) save.mutate();
+    <>
+      {cropSource && (
+        <AvatarCropper
+          file={cropSource}
+          onCancel={() => setCropSource(null)}
+          onApply={(croppedAvatar) => {
+            setAvatar(croppedAvatar);
+            setCropSource(null);
+            setError("");
+            setSuccess("");
           }}
-        >
-          <label className="settings-field">
-            <span>Change avatar</span>
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={(event) => {
-                const file = event.target.files?.[0] ?? null;
-                setError("");
-                if (file && file.size > 5 * 1024 * 1024) {
-                  setError("Avatar must be 5 MB or smaller.");
+        />
+      )}
+      <main className="settings-page">
+        <header className="settings-header">
+          <button type="button" onClick={onBack} aria-label="Back to messages">
+            <BackIcon />
+          </button>
+          <div>
+            <h2>Settings</h2>
+            <p>Manage your public chat profile</p>
+          </div>
+        </header>
+        <section className="settings-card">
+          <div className="settings-avatar">
+            <span>
+              <AvatarContent url={preview} label={username} />
+            </span>
+            <div>
+              <h3>Profile photo</h3>
+              <p>JPG, PNG or WebP. Maximum 5 MB.</p>
+            </div>
+          </div>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!save.isPending) save.mutate();
+            }}
+          >
+            <label className="settings-field">
+              <span>Change avatar</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  setError("");
+                  setSuccess("");
                   event.target.value = "";
-                  return;
-                }
-                setAvatar(file);
-              }}
-            />
-          </label>
-          {avatar && (
-            <button
-              className="remove-avatar-selection"
-              type="button"
-              onClick={() => {
-                setAvatar(null);
-                setProgress(0);
-              }}
-            >
+                  if (file && file.size > 5 * 1024 * 1024) {
+                    setError("Avatar must be 5 MB or smaller.");
+                    return;
+                  }
+                  if (
+                    file &&
+                  !["image/jpeg", "image/png", "image/webp"].includes(file.type)
+                  ) {
+                    setError("Choose a JPG, PNG, or WebP image.");
+                    return;
+                  }
+                  if (file) setCropSource(file);
+                }}
+              />
+            </label>
+            {avatar && (
+              <button
+                className="remove-avatar-selection"
+                type="button"
+                onClick={() => {
+                  setAvatar(null);
+                  setCropSource(null);
+                  setProgress(0);
+                }}
+              >
               Remove selected photo
-            </button>
-          )}
-          {save.isPending && avatar && (
-            <progress className="avatar-progress" max="100" value={progress} />
-          )}
-          <label className="settings-field">
-            <span>First name</span>
-            <input
-              value={firstName}
-              onChange={(event) => setFirstName(event.target.value)}
-              minLength={2}
-              maxLength={100}
-              required
-            />
-          </label>
-          <label className="settings-field">
-            <span>Last name (optional)</span>
-            <input
-              value={lastName}
-              onChange={(event) => setLastName(event.target.value)}
-              minLength={2}
-              maxLength={100}
-            />
-          </label>
-          <label className="settings-field">
-            <span>Username</span>
-            <input
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
-              minLength={5}
-              maxLength={30}
-              pattern="[A-Za-z0-9._]+"
-              title="Use letters, numbers, periods, or underscores."
-              required
-            />
-            <small>Your username is unique and visible to other users.</small>
-          </label>
-          <label className="settings-field">
-            <span>Email</span>
-            <input value={user.email} disabled />
-            <small>Email cannot be changed from this page.</small>
-          </label>
-          {error && <p className="error">{error}</p>}
-          {success && <p className="settings-success">{success}</p>}
-          <button
-            className="save-profile"
-            type="submit"
-            disabled={
-              save.isPending ||
+              </button>
+            )}
+            {save.isPending && avatar && (
+              <progress className="avatar-progress" max="100" value={progress} />
+            )}
+            <label className="settings-field">
+              <span>First name</span>
+              <input
+                value={firstName}
+                onChange={(event) => setFirstName(event.target.value)}
+                minLength={2}
+                maxLength={100}
+                required
+              />
+            </label>
+            <label className="settings-field">
+              <span>Last name (optional)</span>
+              <input
+                value={lastName}
+                onChange={(event) => setLastName(event.target.value)}
+                minLength={2}
+                maxLength={100}
+              />
+            </label>
+            <label className="settings-field">
+              <span>Username</span>
+              <input
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                minLength={5}
+                maxLength={30}
+                pattern="[A-Za-z0-9._]+"
+                title="Use letters, numbers, periods, or underscores."
+                required
+              />
+              <small>Your username is unique and visible to other users.</small>
+            </label>
+            <label className="settings-field">
+              <span>Email</span>
+              <input value={user.email} disabled />
+              <small>Email cannot be changed from this page.</small>
+            </label>
+            {error && <p className="error">{error}</p>}
+            {success && <p className="settings-success">{success}</p>}
+            <button
+              className="save-profile"
+              type="submit"
+              disabled={
+                save.isPending ||
               (!avatar &&
                 firstName.trim() === user.firstName &&
                 lastName.trim() === (user.lastName ?? "") &&
                 username.trim().toLowerCase() === user.username) ||
               firstName.trim().length < 2 ||
               username.trim().length < 5
-            }
-          >
-            {save.isPending ? "Saving..." : "Save changes"}
-          </button>
-        </form>
-      </section>
-    </main>
+              }
+            >
+              {save.isPending ? "Saving..." : "Save changes"}
+            </button>
+          </form>
+        </section>
+      </main>
+    </>
   );
 }

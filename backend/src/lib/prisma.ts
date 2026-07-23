@@ -9,11 +9,10 @@ export const prisma = client.$extends({
     user: {
       name: {
         needs: {
-          firstName: true,
-          lastName: true,
+          username: true,
         },
         compute(user) {
-          return [user.firstName, user.lastName].filter(Boolean).join(" ");
+          return user.username;
         },
       },
     },

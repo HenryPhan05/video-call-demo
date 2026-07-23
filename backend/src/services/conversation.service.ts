@@ -14,6 +14,7 @@ export class ConversationService {
         return {
           ...item,
           title: item.title ?? other?.name ?? "Conversation",
+          avatarUrl: other?.avatarUrl ?? null,
           lastMessage: last
             ? {
               ...last,

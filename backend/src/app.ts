@@ -1,7 +1,6 @@
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import express from "express";
-import path from "node:path";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { env } from "./config/env";
@@ -13,6 +12,7 @@ import { chatRouter } from "./routes/chat.routes";
 import { friendRouter } from "./routes/friend.routes";
 import { attachmentRouter } from "./routes/attachment.routes";
 import { callRouter } from "./routes/call.routes";
+import { avatarUploadDirectory } from "./config/upload-paths";
 
 export const app = express();
 app.use(helmet());
@@ -45,10 +45,18 @@ app.use("/api/v1", attachmentRouter);
 app.use("/api/v1/calls", callRouter);
 app.use(
   "/uploads/avatars",
-  express.static(path.resolve("uploads/avatars"), {
+  express.static(avatarUploadDirectory, {
     dotfiles: "deny",
     fallthrough: false,
     index: false,
+    setHeaders: (res) => {
+      // Avatars are public profile media rendered by the frontend on a
+      // different development/production origin. Helmet defaults this header
+      // to same-origin, which makes a successfully uploaded image appear
+      // broken in <img> elements served from the frontend origin.
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      res.setHeader("Cache-Control", "public, max-age=3600, immutable");
+    },
   }),
 );
 app.use(notFound);

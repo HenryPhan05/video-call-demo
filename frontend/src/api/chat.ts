@@ -74,6 +74,7 @@ export type Message = {
 export type Conversation = {
   id: string;
   title: string;
+  avatarUrl?: string | null;
   lastMessage: Message | null;
 };
 
