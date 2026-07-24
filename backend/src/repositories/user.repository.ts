@@ -53,6 +53,19 @@ export class UserRepository {
     });
   }
 
+  findExistingIds(ids: string[]) {
+    return prisma.user.findMany({
+      where: {
+        id: {
+          in: ids,
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+  }
+
   create(input: {
     firstName: string;
     lastName?: string;

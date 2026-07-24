@@ -12,8 +12,10 @@ import { io, Socket } from "socket.io-client";
 import axios from "axios";
 
 import {
+  addConversationMembers,
   archiveConversation,
   Conversation,
+  createGroupConversation,
   deleteConversationForMe,
   deleteMessage,
   forgotPassword,
@@ -36,6 +38,7 @@ import {
   updateMessage,
   uploadAttachment,
   uploadAvatar,
+  uploadGroupAvatar,
   User,
   verifyEmail,
 } from "./api/chat";
@@ -115,8 +118,22 @@ type DeleteConfirmation =
       type: "message";
       id: string;
     };
+type GroupDialog =
+  | {
+      mode: "create";
+    }
+  | {
+      mode: "add";
+      conversation: Conversation;
+    };
 
 const themeStorageKey = "chatting.theme";
+const publicAuthPaths = new Set([
+  "/login",
+  "/register",
+  "/verify-email",
+  "/forgot-password",
+]);
 
 const formatLastActive = (lastSeenAt?: string | null, now = Date.now()) => {
   if (!lastSeenAt) return "Offline";
@@ -209,11 +226,16 @@ export function App() {
   useEffect(() => {
     if (me.isLoading || initialSessionResolved.current) return;
     initialSessionResolved.current = true;
-    navigate(me.data ? "/conversations" : "/login", {
-      replace: true,
-    });
+    if (me.data && (path === "/" || publicAuthPaths.has(path)))
+      navigate("/conversations", {
+        replace: true,
+      });
+    if (!me.data && path !== "/")
+      navigate("/", {
+        replace: true,
+      });
     setRouteReady(true);
-  }, [me.data, me.isLoading, navigate]);
+  }, [me.data, me.isLoading, navigate, path]);
 
   useEffect(
     () => () => {
@@ -228,6 +250,17 @@ export function App() {
     document.documentElement.style.colorScheme = theme;
     localStorage.setItem(themeStorageKey, theme);
   }, [theme]);
+
+  useEffect(() => {
+    document.title =
+      path === "/"
+        ? "Chatting — Connect naturally"
+        : path === "/register"
+          ? "Register — Chatting"
+          : path === "/login"
+            ? "Sign in — Chatting"
+            : "Chatting";
+  }, [path]);
 
   const toggleTheme = useCallback(() => {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
@@ -256,13 +289,20 @@ export function App() {
         <Suspense fallback={null}>
           <AuthBackground />
         </Suspense>
-        <h1>Chatting</h1>
+        <AuthBrand navigate={navigate} />
         <p>Loading...</p>
       </main>
     );
   return (
     <>
-      {me.data ? (
+      {path === "/" ? (
+        <LandingPage
+          authenticated={Boolean(me.data)}
+          navigate={navigate}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+        />
+      ) : me.data && !publicAuthPaths.has(path) ? (
         <Chat
           user={me.data.user}
           path={path}
@@ -284,6 +324,211 @@ export function App() {
         />
       )}
     </>
+  );
+}
+
+function AuthBrand({
+  navigate,
+}: {
+  navigate: Navigate;
+}) {
+  return (
+    <h1>
+      <button
+        className="auth-brand-link"
+        type="button"
+        onClick={() => navigate("/")}
+        title="Return to the Chatting landing page"
+      >
+        Chatting
+      </button>
+    </h1>
+  );
+}
+
+function LandingPage({
+  authenticated,
+  navigate,
+  theme,
+  onToggleTheme,
+}: {
+  authenticated: boolean;
+  navigate: Navigate;
+  theme: Theme;
+  onToggleTheme: () => void;
+}) {
+  const openSignIn = () =>
+    navigate(authenticated ? "/conversations" : "/login");
+
+  return (
+    <main className="landing-page">
+      <div className="landing-glow landing-glow-one" />
+      <div className="landing-glow landing-glow-two" />
+      <nav className="landing-nav" aria-label="Main navigation">
+        <button
+          className="landing-brand"
+          type="button"
+          onClick={() => navigate("/")}
+          aria-label="Chatting home"
+        >
+          <span className="landing-brand-mark" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+          <strong>Chatting</strong>
+        </button>
+        <div className="landing-actions">
+          <button
+            className="landing-theme-toggle"
+            type="button"
+            onClick={onToggleTheme}
+            aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+          >
+            <ThemeIcon theme={theme} />
+          </button>
+          <button
+            className="landing-sign-in"
+            type="button"
+            onClick={openSignIn}
+          >
+            Sign in
+          </button>
+          <button
+            className="landing-register"
+            type="button"
+            onClick={() => navigate("/register")}
+          >
+            Register
+          </button>
+        </div>
+      </nav>
+
+      <section className="landing-hero">
+        <div className="landing-copy">
+          <span className="landing-eyebrow">
+            <i aria-hidden="true" />
+            Conversations that feel closer
+          </span>
+          <h1>
+            Your people.
+            <br />
+            <span>Your conversations.</span>
+          </h1>
+          <p>
+            Message friends, share moments, and jump into crystal-clear voice
+            or video calls—all from one calm, responsive space.
+          </p>
+          <div className="landing-hero-actions">
+            <button type="button" onClick={openSignIn}>
+              {authenticated ? "Open Chatting" : "Start chatting"}
+              <span aria-hidden="true">→</span>
+            </button>
+            <small>No complicated setup. Just connect and talk.</small>
+          </div>
+          <div className="landing-trust-row" aria-label="Chatting capabilities">
+            <span>
+              <b>●</b> Realtime
+            </span>
+            <span>Secure accounts</span>
+            <span>Group ready</span>
+          </div>
+        </div>
+
+        <div className="landing-product" aria-label="Chatting app preview">
+          <div className="landing-window">
+            <div className="landing-window-bar">
+              <span>
+                <i />
+                <i />
+                <i />
+              </span>
+              <small>chatting.app</small>
+              <b />
+            </div>
+            <div className="landing-app-preview">
+              <aside>
+                <div className="preview-user">
+                  <span>H</span>
+                  <i />
+                </div>
+                <span className="preview-nav-pill active" />
+                <span className="preview-nav-pill" />
+                <span className="preview-nav-pill short" />
+                <div className="preview-avatars">
+                  <b>A</b>
+                  <b>M</b>
+                  <b>J</b>
+                </div>
+              </aside>
+              <section>
+                <header>
+                  <span className="preview-avatar">A</span>
+                  <div>
+                    <strong>Alex</strong>
+                    <small>Online</small>
+                  </div>
+                  <div className="preview-call-buttons" aria-hidden="true">
+                    <i>⌕</i>
+                    <i>◉</i>
+                  </div>
+                </header>
+                <div className="preview-messages">
+                  <p className="preview-date">Today, 10:24</p>
+                  <div className="preview-message theirs">
+                    Are we still on for tonight?
+                  </div>
+                  <div className="preview-message mine">
+                    Absolutely! I’ll send the location.
+                  </div>
+                  <div className="preview-photo">
+                    <span />
+                    <span />
+                    <i />
+                  </div>
+                  <div className="preview-typing">
+                    <i />
+                    <i />
+                    <i />
+                  </div>
+                </div>
+                <footer>
+                  <button type="button" tabIndex={-1}>+</button>
+                  <span>Write a message</span>
+                  <button type="button" tabIndex={-1}>↑</button>
+                </footer>
+              </section>
+            </div>
+          </div>
+          <div className="landing-floating-card">
+            <span className="floating-avatar">V</span>
+            <span>
+              <strong>Video call</strong>
+              <small>Connected · 12:08</small>
+            </span>
+            <i aria-hidden="true">✓</i>
+          </div>
+        </div>
+      </section>
+
+      <section className="landing-features" aria-label="Features">
+        <article>
+          <span>01</span>
+          <h2>Realtime by default</h2>
+          <p>Messages, reactions, typing, and presence update instantly.</p>
+        </article>
+        <article>
+          <span>02</span>
+          <h2>Share more than words</h2>
+          <p>Send photos, documents, audio, and voice messages securely.</p>
+        </article>
+        <article>
+          <span>03</span>
+          <h2>Call anyone together</h2>
+          <p>Move from a direct chat or group into voice and video calls.</p>
+        </article>
+      </section>
+    </main>
   );
 }
 
@@ -699,7 +944,7 @@ function Auth({
         <Suspense fallback={null}>
           <AuthBackground />
         </Suspense>
-        <h1>Chatting</h1>
+        <AuthBrand navigate={navigate} />
         <h2>Verify your email</h2>
         <form onSubmit={handleVerificationSubmit}>
           <p className="verification-help">
@@ -780,7 +1025,7 @@ function Auth({
         <Suspense fallback={null}>
           <AuthBackground />
         </Suspense>
-        <h1>Chatting</h1>
+        <AuthBrand navigate={navigate} />
         <h2>{resetStep === "email" ? "Forgot password" : "Reset password"}</h2>
         <form
           onSubmit={
@@ -1005,7 +1250,7 @@ function Auth({
       <Suspense fallback={null}>
         <AuthBackground />
       </Suspense>
-      <h1>Chatting</h1>
+      <AuthBrand navigate={navigate} />
       <h2>{mode === "login" ? "Sign in" : "Register"}</h2>
       <form onSubmit={handleAuthSubmit}>
         {mode === "register" && (
@@ -1302,6 +1547,19 @@ function Chat({
   const [conversationActionError, setConversationActionError] = useState("");
   const [deleteConfirmation, setDeleteConfirmation] =
     useState<DeleteConfirmation | null>(null);
+  const [groupDialog, setGroupDialog] = useState<GroupDialog | null>(null);
+  const [groupTitle, setGroupTitle] = useState("");
+  const [groupUserQuery, setGroupUserQuery] = useState("");
+  const [selectedGroupUsers, setSelectedGroupUsers] = useState<User[]>([]);
+  const [groupError, setGroupError] = useState("");
+  const [groupAvatarDialog, setGroupAvatarDialog] =
+    useState<Conversation | null>(null);
+  const [groupAvatarFile, setGroupAvatarFile] = useState<File | null>(null);
+  const [groupAvatarCropSource, setGroupAvatarCropSource] =
+    useState<File | null>(null);
+  const [groupAvatarPreview, setGroupAvatarPreview] = useState("");
+  const [groupAvatarProgress, setGroupAvatarProgress] = useState(0);
+  const [groupAvatarError, setGroupAvatarError] = useState("");
   const [presenceByUser, setPresenceByUser] = useState<
     Record<string, Presence>
   >({});
@@ -1324,8 +1582,23 @@ function Chat({
     queryFn: () => searchUsers(userQuery.trim()),
     enabled: userQuery.trim().length >= 5,
   });
+  const groupUserResults = useQuery({
+    queryKey: ["group-user-search", groupUserQuery],
+    queryFn: () => searchUsers(groupUserQuery.trim()),
+    enabled: Boolean(groupDialog) && groupUserQuery.trim().length >= 5,
+  });
   const matchingUsers = (userResults.data ?? []).filter(
     (result) => result.id !== user.id,
+  );
+  const unavailableGroupUserIds = new Set([
+    user.id,
+    ...(groupDialog?.mode === "add"
+      ? groupDialog.conversation.memberIds ?? []
+      : []),
+    ...selectedGroupUsers.map((member) => member.id),
+  ]);
+  const matchingGroupUsers = (groupUserResults.data ?? []).filter(
+    (result) => !unavailableGroupUserIds.has(result.id),
   );
   const activeConversation = conversations.data?.find(
     (conversation) => conversation.id === conversationId,
@@ -1336,6 +1609,31 @@ function Chat({
   const activeUserOnline = activePresence?.status === "online";
   const activeLastSeenAt =
     activePresence?.lastSeenAt ?? activeConversation?.lastSeenAt;
+  const activeTypingUserIds = typingUsers[conversationId] ?? [];
+  const activeTypingMembers = activeTypingUserIds
+    .map((typingUserId) =>
+      activeConversation?.members?.find(
+        (member) => member.id === typingUserId,
+      ),
+    )
+    .filter(
+      (
+        member,
+      ): member is NonNullable<
+        NonNullable<Conversation["members"]>[number]
+      > => Boolean(member),
+    );
+  const typingUsernames = activeTypingMembers.map(
+    (member) => member.username,
+  );
+  const typingLabel =
+    typingUsernames.length <= 1
+      ? typingUsernames[0] ?? "Someone"
+      : typingUsernames.length === 2
+        ? `${typingUsernames[0]} and ${typingUsernames[1]}`
+        : `${typingUsernames[0]} and ${typingUsernames.length - 1} others`;
+  const typingAvatarMember =
+    activeTypingMembers.length === 1 ? activeTypingMembers[0] : undefined;
 
   const syncConversationSeen = useCallback(
     async (id: string) => {
@@ -1405,6 +1703,16 @@ function Chat({
     window.addEventListener("click", closeMenu);
     return () => window.removeEventListener("click", closeMenu);
   }, [conversationMenuId]);
+
+  useEffect(() => {
+    if (!groupAvatarFile) {
+      setGroupAvatarPreview(avatarUrl(groupAvatarDialog?.avatarUrl));
+      return;
+    }
+    const objectUrl = URL.createObjectURL(groupAvatarFile);
+    setGroupAvatarPreview(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [groupAvatarDialog?.avatarUrl, groupAvatarFile]);
 
   useEffect(() => {
     if (path === "/settings") {
@@ -1501,6 +1809,16 @@ function Chat({
         ["messages", message.conversationId],
         (current = []) => current.filter((item) => item.id !== message.id),
       );
+      void queryClient.invalidateQueries({
+        queryKey: ["conversations"],
+      });
+    });
+    socket.on("conversation:new", () => {
+      void queryClient.invalidateQueries({
+        queryKey: ["conversations"],
+      });
+    });
+    socket.on("conversation:update", () => {
       void queryClient.invalidateQueries({
         queryKey: ["conversations"],
       });
@@ -1613,6 +1931,141 @@ function Chat({
       });
       setConversationId(conversation.id);
       navigate(`/conversations/${encodeURIComponent(conversation.id)}`);
+    },
+  });
+
+  const closeGroupDialog = () => {
+    setGroupDialog(null);
+    setGroupTitle("");
+    setGroupUserQuery("");
+    setSelectedGroupUsers([]);
+    setGroupError("");
+  };
+
+  const openCreateGroup = () => {
+    setGroupDialog({
+      mode: "create",
+    });
+    setGroupTitle("");
+    setGroupUserQuery("");
+    setSelectedGroupUsers([]);
+    setGroupError("");
+  };
+
+  const openAddMember = (conversation: Conversation) => {
+    setConversationMenuId(null);
+    setGroupDialog({
+      mode: "add",
+      conversation,
+    });
+    setGroupTitle(
+      conversation.type === "GROUP" ? "" : `${conversation.title} group`,
+    );
+    setGroupUserQuery("");
+    setSelectedGroupUsers([]);
+    setGroupError("");
+  };
+
+  const closeGroupAvatarDialog = () => {
+    setGroupAvatarDialog(null);
+    setGroupAvatarFile(null);
+    setGroupAvatarCropSource(null);
+    setGroupAvatarProgress(0);
+    setGroupAvatarError("");
+  };
+
+  const openGroupAvatarDialog = (conversation: Conversation) => {
+    setConversationMenuId(null);
+    setGroupAvatarDialog(conversation);
+    setGroupAvatarFile(null);
+    setGroupAvatarCropSource(null);
+    setGroupAvatarPreview(avatarUrl(conversation.avatarUrl));
+    setGroupAvatarProgress(0);
+    setGroupAvatarError("");
+  };
+
+  const saveGroup = useMutation({
+    mutationFn: async () => {
+      if (!groupDialog) throw new Error("Group dialog is closed.");
+      const selectedIds = selectedGroupUsers.map((member) => member.id);
+
+      if (groupDialog.mode === "create")
+        return createGroupConversation({
+          title: groupTitle.trim(),
+          userIds: selectedIds,
+        });
+
+      if (groupDialog.conversation.type === "GROUP")
+        return addConversationMembers(
+          groupDialog.conversation.id,
+          selectedIds,
+        );
+
+      const existingUserId = groupDialog.conversation.otherUserId;
+      if (!existingUserId)
+        throw new Error("The existing conversation member is unavailable.");
+      return createGroupConversation({
+        title: groupTitle.trim(),
+        userIds: [existingUserId, ...selectedIds],
+      });
+    },
+    onSuccess: async (conversation) => {
+      const createdNewGroup =
+        groupDialog?.mode === "create" ||
+        groupDialog?.conversation.type !== "GROUP";
+      closeGroupDialog();
+      await queryClient.invalidateQueries({
+        queryKey: ["conversations"],
+      });
+      if (createdNewGroup) {
+        setPage("chat");
+        setConversationId(conversation.id);
+        navigate(`/conversations/${encodeURIComponent(conversation.id)}`);
+      }
+    },
+    onError: (cause) => {
+      setGroupError(
+        axios.isAxiosError(cause)
+          ? cause.response?.data?.message ?? "Unable to update the group."
+          : cause instanceof Error
+            ? cause.message
+            : "Unable to update the group.",
+      );
+    },
+  });
+
+  const saveGroupAvatar = useMutation({
+    mutationFn: async () => {
+      if (!groupAvatarDialog || !groupAvatarFile)
+        throw new Error("Choose an image for the group.");
+      setGroupAvatarError("");
+      setGroupAvatarProgress(0);
+      return uploadGroupAvatar(
+        groupAvatarDialog.id,
+        groupAvatarFile,
+        setGroupAvatarProgress,
+      );
+    },
+    onSuccess: (updatedConversation) => {
+      queryClient.setQueryData<Conversation[]>(
+        ["conversations"],
+        (current = []) =>
+          current.map((conversation) =>
+            conversation.id === updatedConversation.id
+              ? updatedConversation
+              : conversation,
+          ),
+      );
+      closeGroupAvatarDialog();
+    },
+    onError: (cause) => {
+      setGroupAvatarError(
+        axios.isAxiosError(cause)
+          ? cause.response?.data?.message ?? "Unable to update group avatar."
+          : cause instanceof Error
+            ? cause.message
+            : "Unable to update group avatar.",
+      );
     },
   });
 
@@ -1787,6 +2240,29 @@ function Chat({
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [deleteConfirmation, remove.isPending, removeConversation.isPending]);
 
+  useEffect(() => {
+    if (!groupDialog) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !saveGroup.isPending) closeGroupDialog();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [groupDialog, saveGroup.isPending]);
+
+  useEffect(() => {
+    if (!groupAvatarDialog || groupAvatarCropSource) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !saveGroupAvatar.isPending)
+        closeGroupAvatarDialog();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [
+    groupAvatarCropSource,
+    groupAvatarDialog,
+    saveGroupAvatar.isPending,
+  ]);
+
   const confirmDeletion = () => {
     if (!deleteConfirmation) return;
     if (deleteConfirmation.type === "conversation") {
@@ -1795,6 +2271,17 @@ function Chat({
     }
     remove.mutate(deleteConfirmation.id);
   };
+
+  const groupNeedsTitle =
+    groupDialog?.mode === "create" ||
+    (groupDialog?.mode === "add" &&
+      groupDialog.conversation.type !== "GROUP");
+  const minimumSelectedMembers = groupDialog?.mode === "create" ? 2 : 1;
+  const canSaveGroup =
+    Boolean(groupDialog) &&
+    (!groupNeedsTitle || groupTitle.trim().length >= 2) &&
+    selectedGroupUsers.length >= minimumSelectedMembers &&
+    !saveGroup.isPending;
 
   const selectConversation = (id: string) => {
     if (recordingVoice) return;
@@ -1842,7 +2329,14 @@ function Chat({
     <div className="chat">
       <aside>
         <div className="sidebar-top">
-          <p className="brand">CHATTING</p>
+          <button
+            className="brand brand-link"
+            type="button"
+            onClick={() => navigate("/")}
+            aria-label="Return to the Chatting landing page"
+          >
+            CHATTING
+          </button>
           <button
             className="theme-toggle"
             type="button"
@@ -1914,7 +2408,19 @@ function Chat({
             Unable to search right now.
           </p>
         )}
-        <p className="section-label">CONVERSATIONS</p>
+        <div className="conversation-section-heading">
+          <p className="section-label">CONVERSATIONS</p>
+          <button
+            className="create-group-button"
+            type="button"
+            title="Create a group"
+            aria-label="Create a group"
+            onClick={openCreateGroup}
+          >
+            <span aria-hidden="true">+</span>
+            <strong>Group</strong>
+          </button>
+        </div>
         {conversationActionError && (
           <p className="conversation-action-error">
             {conversationActionError}
@@ -1987,6 +2493,23 @@ function Chat({
                 role="menu"
                 onClick={(event) => event.stopPropagation()}
               >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => openAddMember(conversation)}
+                >
+                  Add member
+                </button>
+                {conversation.type === "GROUP" &&
+                  conversation.currentUserRole === "OWNER" && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => openGroupAvatarDialog(conversation)}
+                    >
+                      Change group avatar
+                    </button>
+                  )}
                 <button
                   type="button"
                   role="menuitem"
@@ -2084,16 +2607,22 @@ function Chat({
               </span>
               <div>
                 <h2>{activeConversation.title}</h2>
-                <p
-                  className={`user-presence ${
-                    activeUserOnline ? "online" : "offline"
-                  }`}
-                >
-                  <span className="presence-dot" aria-hidden="true" />
-                  {activeUserOnline
-                    ? "Online"
-                    : formatLastActive(activeLastSeenAt, presenceNow)}
-                </p>
+                {activeConversation.type === "GROUP" ? (
+                  <p className="group-member-status">
+                    {activeConversation.memberCount ?? 1} members
+                  </p>
+                ) : (
+                  <p
+                    className={`user-presence ${
+                      activeUserOnline ? "online" : "offline"
+                    }`}
+                  >
+                    <span className="presence-dot" aria-hidden="true" />
+                    {activeUserOnline
+                      ? "Online"
+                      : formatLastActive(activeLastSeenAt, presenceNow)}
+                  </p>
+                )}
               </div>
             </header>
           )}
@@ -2229,7 +2758,7 @@ function Chat({
               setFiles((current) => [...current, ...newFiles])
             }
           >
-            {Boolean(typingUsers[conversationId]?.length) && (
+            {Boolean(activeTypingUserIds.length) && (
               <div
                 className="typing-indicator"
                 role="status"
@@ -2237,8 +2766,11 @@ function Chat({
               >
                 <span className="typing-avatar" aria-hidden="true">
                   <AvatarContent
-                    url={activeConversation?.avatarUrl}
-                    label={activeConversation?.title ?? "User"}
+                    url={
+                      typingAvatarMember?.avatarUrl ??
+                      activeConversation?.avatarUrl
+                    }
+                    label={typingAvatarMember?.username ?? typingLabel}
                   />
                 </span>
                 <span className="typing-content">
@@ -2248,8 +2780,10 @@ function Chat({
                     <i />
                   </span>
                   <span className="typing-label">
-                    <strong>{activeConversation?.title ?? "Someone"}</strong>
-                    {" is typing"}
+                    <strong>{typingLabel}</strong>
+                    {activeTypingUserIds.length === 1
+                      ? " is typing"
+                      : " are typing"}
                   </span>
                 </span>
               </div>
@@ -2445,10 +2979,320 @@ function Chat({
           </section>
         </div>
       )}
+      {groupDialog && (
+        <div
+          className="group-dialog-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !saveGroup.isPending)
+              closeGroupDialog();
+          }}
+        >
+          <form
+            className="group-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="group-dialog-title"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (canSaveGroup) saveGroup.mutate();
+            }}
+          >
+            <header>
+              <div>
+                <span className="group-dialog-icon" aria-hidden="true">
+                  +
+                </span>
+                <span>
+                  <h2 id="group-dialog-title">
+                    {groupDialog.mode === "create"
+                      ? "Create a group"
+                      : "Add member"}
+                  </h2>
+                  <p>
+                    {groupDialog.mode === "create"
+                      ? "Choose at least two people to begin a group."
+                      : groupDialog.conversation.type === "GROUP"
+                        ? `Add people to ${groupDialog.conversation.title}.`
+                        : "A new group will be created so your private message history stays private."}
+                  </p>
+                </span>
+              </div>
+              <button
+                type="button"
+                aria-label="Close group window"
+                disabled={saveGroup.isPending}
+                onClick={closeGroupDialog}
+              >
+                ×
+              </button>
+            </header>
+
+            {groupNeedsTitle && (
+              <label className="group-dialog-field">
+                <span>Group name</span>
+                <input
+                  value={groupTitle}
+                  maxLength={120}
+                  autoFocus
+                  placeholder="Enter a group name"
+                  onChange={(event) => {
+                    setGroupTitle(event.target.value);
+                    setGroupError("");
+                  }}
+                />
+                <small>{groupTitle.trim().length}/120</small>
+              </label>
+            )}
+
+            <label className="group-dialog-field">
+              <span>Find by username</span>
+              <input
+                value={groupUserQuery}
+                autoFocus={!groupNeedsTitle}
+                placeholder="Enter an exact username"
+                onChange={(event) => {
+                  setGroupUserQuery(event.target.value);
+                  setGroupError("");
+                }}
+              />
+            </label>
+
+            <div className="group-search-results" aria-live="polite">
+              {groupUserQuery.trim().length > 0 &&
+                groupUserQuery.trim().length < 5 && (
+                  <p>Enter at least 5 characters.</p>
+                )}
+              {groupUserResults.isFetching && <p>Searching...</p>}
+              {matchingGroupUsers.map((result) => (
+                <button
+                  type="button"
+                  key={result.id}
+                  onClick={() => {
+                    setSelectedGroupUsers((current) => [...current, result]);
+                    setGroupUserQuery("");
+                  }}
+                >
+                  <span className="avatar">
+                    <AvatarContent
+                      url={result.avatarUrl}
+                      label={result.username}
+                    />
+                  </span>
+                  <span>
+                    <strong>{result.username}</strong>
+                    <small>Add to group</small>
+                  </span>
+                  <b aria-hidden="true">+</b>
+                </button>
+              ))}
+              {groupUserQuery.trim().length >= 5 &&
+                groupUserResults.isSuccess &&
+                !groupUserResults.isFetching &&
+                matchingGroupUsers.length === 0 && (
+                  <p className="not-found">
+                    {groupUserResults.data?.length
+                      ? "This user is already selected or in the conversation."
+                      : "User not found."}
+                  </p>
+                )}
+            </div>
+
+            <div className="selected-group-members">
+              <div>
+                <strong>Selected people</strong>
+                <span>
+                  {selectedGroupUsers.length}/{minimumSelectedMembers} minimum
+                </span>
+              </div>
+              {selectedGroupUsers.length === 0 ? (
+                <p>No one selected yet.</p>
+              ) : (
+                <div className="selected-group-member-list">
+                  {selectedGroupUsers.map((member) => (
+                    <span className="selected-group-member" key={member.id}>
+                      <span className="mini-avatar">
+                        <AvatarContent
+                          url={member.avatarUrl}
+                          label={member.username}
+                        />
+                      </span>
+                      <strong>{member.username}</strong>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${member.username}`}
+                        onClick={() =>
+                          setSelectedGroupUsers((current) =>
+                            current.filter((item) => item.id !== member.id),
+                          )
+                        }
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {groupError && <p className="group-dialog-error">{groupError}</p>}
+
+            <footer>
+              <button
+                className="cancel-group-action"
+                type="button"
+                disabled={saveGroup.isPending}
+                onClick={closeGroupDialog}
+              >
+                Cancel
+              </button>
+              <button
+                className="save-group-action"
+                type="submit"
+                disabled={!canSaveGroup}
+              >
+                {saveGroup.isPending
+                  ? "Saving..."
+                  : groupDialog.mode === "add" &&
+                      groupDialog.conversation.type === "GROUP"
+                    ? "Add members"
+                    : "Create group"}
+              </button>
+            </footer>
+          </form>
+        </div>
+      )}
+      {groupAvatarDialog && (
+        <div
+          className="group-avatar-dialog-backdrop"
+          onMouseDown={(event) => {
+            if (
+              event.target === event.currentTarget &&
+              !saveGroupAvatar.isPending
+            )
+              closeGroupAvatarDialog();
+          }}
+        >
+          <section
+            className="group-avatar-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="group-avatar-dialog-title"
+          >
+            <header>
+              <div>
+                <h2 id="group-avatar-dialog-title">Change group avatar</h2>
+                <p>
+                  Choose a clear JPG, PNG, or WebP image for{" "}
+                  {groupAvatarDialog.title}.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close group avatar window"
+                disabled={saveGroupAvatar.isPending}
+                onClick={closeGroupAvatarDialog}
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="group-avatar-editor">
+              <span className="group-avatar-preview">
+                <AvatarContent
+                  url={groupAvatarPreview}
+                  label={groupAvatarDialog.title}
+                />
+              </span>
+              <div>
+                <strong>Group photo</strong>
+                <p>Crop the image before saving it for every group member.</p>
+                <label className="choose-group-avatar">
+                  Choose image
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    disabled={saveGroupAvatar.isPending}
+                    onChange={(event) => {
+                      const selected = event.target.files?.[0];
+                      event.currentTarget.value = "";
+                      if (!selected) return;
+                      setGroupAvatarError("");
+                      setGroupAvatarCropSource(selected);
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {groupAvatarFile && (
+              <p className="group-avatar-selected">
+                Ready: <strong>{groupAvatarFile.name}</strong>
+              </p>
+            )}
+            {saveGroupAvatar.isPending && (
+              <div
+                className="group-avatar-upload-progress"
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={groupAvatarProgress}
+              >
+                <span>
+                  Uploading
+                  <strong>{groupAvatarProgress}%</strong>
+                </span>
+                <i>
+                  <b
+                    style={{
+                      width: `${groupAvatarProgress}%`,
+                    }}
+                  />
+                </i>
+              </div>
+            )}
+            {groupAvatarError && (
+              <p className="group-avatar-error">{groupAvatarError}</p>
+            )}
+
+            <footer>
+              <button
+                className="cancel-group-avatar"
+                type="button"
+                disabled={saveGroupAvatar.isPending}
+                onClick={closeGroupAvatarDialog}
+              >
+                Cancel
+              </button>
+              <button
+                className="save-group-avatar"
+                type="button"
+                disabled={!groupAvatarFile || saveGroupAvatar.isPending}
+                onClick={() => saveGroupAvatar.mutate()}
+              >
+                {saveGroupAvatar.isPending ? "Saving..." : "Save avatar"}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+      {groupAvatarCropSource && (
+        <AvatarCropper
+          file={groupAvatarCropSource}
+          title="Crop group photo"
+          description="Drag to reposition the group photo, then choose a zoom level."
+          onCancel={() => setGroupAvatarCropSource(null)}
+          onApply={(croppedFile) => {
+            setGroupAvatarFile(croppedFile);
+            setGroupAvatarCropSource(null);
+          }}
+        />
+      )}
       <CallManager
         socket={socketClient}
         conversationId={conversationId}
         conversationTitle={activeConversation?.title}
+        conversationAvatarUrl={activeConversation?.avatarUrl}
+        conversationType={activeConversation?.type}
         user={user}
         enabled={page === "chat" && Boolean(conversationId)}
       />

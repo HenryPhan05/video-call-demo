@@ -12,32 +12,73 @@ type Ack = (result: {
 
 async function cacheActive(call: {
   id: string;
-  callerId: string;
-  receiverId: string;
+  participants: {
+    userId: string;
+    leftAt: Date | null;
+  }[];
 }) {
   if (!isRedisAvailable()) return;
 
-  await redis
+  const transaction = redis
     .multi()
-    .set(`call:active:${call.id}`, JSON.stringify(call), "EX", ACTIVE_TTL)
-    .set(`user:${call.callerId}:active-call`, call.id, "EX", ACTIVE_TTL)
-    .set(`user:${call.receiverId}:active-call`, call.id, "EX", ACTIVE_TTL)
-    .exec();
+    .set(`call:active:${call.id}`, JSON.stringify(call), "EX", ACTIVE_TTL);
+  for (const participant of call.participants)
+    if (!participant.leftAt)
+      transaction.set(
+        `user:${participant.userId}:active-call`,
+        call.id,
+        "EX",
+        ACTIVE_TTL,
+      );
+  await transaction.exec();
 }
 
 async function clearActive(call: {
   id: string;
-  callerId: string;
-  receiverId: string;
+  participants: {
+    userId: string;
+  }[];
 }) {
   if (!isRedisAvailable()) return;
 
   await redis.del(
     `call:active:${call.id}`,
-    `user:${call.callerId}:active-call`,
-    `user:${call.receiverId}:active-call`,
+    ...call.participants.map(
+      (participant) => `user:${participant.userId}:active-call`,
+    ),
   );
 }
+
+async function clearParticipantActive(userId: string) {
+  if (isRedisAvailable()) await redis.del(`user:${userId}:active-call`);
+}
+
+const participantIds = (call: {
+  participants: {
+    userId: string;
+    leftAt: Date | null;
+  }[];
+}) =>
+  call.participants
+    .filter((participant) => !participant.leftAt)
+    .map((participant) => participant.userId);
+
+const emitToParticipants = (
+  io: Server,
+  call: {
+    participants: {
+      userId: string;
+      leftAt: Date | null;
+    }[];
+  },
+  event: string,
+  payload: unknown,
+  excludedUserId?: string,
+) => {
+  for (const participantId of participantIds(call))
+    if (participantId !== excludedUserId)
+      io.to(`user:${participantId}`).emit(event, payload);
+};
 
 const message = (error: unknown) =>
   error instanceof Error ? error.message : "Call operation failed.";
@@ -76,10 +117,15 @@ export function registerCallSocket(io: Server, socket: Socket) {
           payload.type!,
         );
         await cacheActive(call);
-        io.to(`user:${call.receiverId}`).emit("call:ringing", {
+        emitToParticipants(
+          io,
           call,
-          offer: payload.offer,
-        });
+          "call:ringing",
+          {
+            call,
+          },
+          call.callerId,
+        );
         io.to(`user:${call.callerId}`).emit("call:state", call);
         ack?.({
           ok: true,
@@ -107,11 +153,10 @@ export function registerCallSocket(io: Server, socket: Socket) {
         if (!payload?.callId) throw new Error("Call ID is required.");
         const call = await calls.accept(payload.callId, userId);
         await cacheActive(call);
-        io.to(`user:${call.callerId}`).emit("call:accept", {
+        emitToParticipants(io, call, "call:participant-joined", {
           call,
-          answer: payload.answer,
+          userId,
         });
-        io.to(`user:${call.receiverId}`).emit("call:state", call);
         ack?.({
           ok: true,
           data: call,
@@ -136,9 +181,24 @@ export function registerCallSocket(io: Server, socket: Socket) {
       try {
         if (!payload?.callId) throw new Error("Call ID is required.");
         const call = await calls.reject(payload.callId, userId);
-        await clearActive(call);
-        io.to(`user:${call.callerId}`).emit("call:reject", call);
-        io.to(`user:${call.receiverId}`).emit("call:state", call);
+        await clearParticipantActive(userId);
+        if (["REJECTED", "CANCELLED", "ENDED", "MISSED"].includes(call.status)) {
+          await clearActive(call);
+          for (const participant of call.participants)
+            io.to(`user:${participant.userId}`).emit("call:reject", call);
+        } else {
+          await cacheActive(call);
+          emitToParticipants(
+            io,
+            call,
+            "call:participant-left",
+            {
+              call,
+              userId,
+            },
+            userId,
+          );
+        }
         ack?.({
           ok: true,
           data: call,
@@ -164,8 +224,8 @@ export function registerCallSocket(io: Server, socket: Socket) {
         if (!payload?.callId) throw new Error("Call ID is required.");
         const call = await calls.cancel(payload.callId, userId);
         await clearActive(call);
-        io.to(`user:${call.receiverId}`).emit("call:cancel", call);
-        io.to(`user:${call.callerId}`).emit("call:state", call);
+        for (const participant of call.participants)
+          io.to(`user:${participant.userId}`).emit("call:cancel", call);
         ack?.({
           ok: true,
           data: call,
@@ -190,9 +250,24 @@ export function registerCallSocket(io: Server, socket: Socket) {
       try {
         if (!payload?.callId) throw new Error("Call ID is required.");
         const call = await calls.end(payload.callId, userId);
-        await clearActive(call);
-        io.to(`user:${call.callerId}`).emit("call:end", call);
-        io.to(`user:${call.receiverId}`).emit("call:end", call);
+        if (["ENDED", "MISSED"].includes(call.status)) {
+          await clearActive(call);
+          for (const participant of call.participants)
+            io.to(`user:${participant.userId}`).emit("call:end", call);
+        } else {
+          await clearParticipantActive(userId);
+          await cacheActive(call);
+          emitToParticipants(
+            io,
+            call,
+            "call:participant-left",
+            {
+              call,
+              userId,
+            },
+            userId,
+          );
+        }
         ack?.({
           ok: true,
           data: call,
@@ -217,20 +292,22 @@ export function registerCallSocket(io: Server, socket: Socket) {
           offer?: unknown;
           answer?: unknown;
           candidate?: unknown;
+          toUserId?: string;
         },
         ack?: Ack,
       ) => {
         try {
           if (!payload?.callId) throw new Error("Call ID is required.");
           const {
-            call, otherUserId,
-          } = await calls.otherParticipant(
+            call, targetUserId,
+          } = await calls.signalParticipant(
             payload.callId,
             userId,
+            payload.toUserId,
           );
           if (!["RINGING", "ACCEPTED"].includes(call.status))
             throw new Error("Call has ended.");
-          io.to(`user:${otherUserId}`).emit(event, {
+          io.to(`user:${targetUserId}`).emit(event, {
             ...payload,
             fromUserId: userId,
           });

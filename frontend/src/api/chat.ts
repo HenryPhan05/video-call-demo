@@ -38,8 +38,20 @@ export type CallRecord = {
   endedAt?: string | null;
   duration?: number | null;
   createdAt: string;
+  conversation: {
+    id: string;
+    type: "DIRECT" | "GROUP";
+    title?: string | null;
+    groupAvatarUrl?: string | null;
+  };
   caller: Pick<User, "id" | "name" | "avatarUrl">;
   receiver: Pick<User, "id" | "name" | "avatarUrl">;
+  participants: {
+    userId: string;
+    joinedAt?: string | null;
+    leftAt?: string | null;
+    user: Pick<User, "id" | "username" | "name" | "avatarUrl">;
+  }[];
 };
 
 export type Message = {
@@ -73,10 +85,15 @@ export type Message = {
 
 export type Conversation = {
   id: string;
+  type?: "DIRECT" | "GROUP";
   title: string;
   avatarUrl?: string | null;
   otherUserId?: string | null;
   lastSeenAt?: string | null;
+  memberCount?: number;
+  memberIds?: string[];
+  members?: Pick<User, "id" | "username" | "name" | "avatarUrl">[];
+  currentUserRole?: "OWNER" | "MEMBER";
   unreadCount: number;
   lastMessage: Message | null;
 };
@@ -188,6 +205,35 @@ export const startConversation = (userId: string) =>
       userId,
     })
     .then(body<Conversation>);
+export const createGroupConversation = (input: {
+  title: string;
+  userIds: string[];
+}) =>
+  apiClient
+    .post("/conversations/groups", input)
+    .then(body<Conversation>);
+export const addConversationMembers = (id: string, userIds: string[]) =>
+  apiClient
+    .post(`/conversations/${id}/members`, {
+      userIds,
+    })
+    .then(body<Conversation>);
+export const uploadGroupAvatar = (
+  id: string,
+  file: File,
+  onProgress: (progress: number) => void,
+) => {
+  const data = new FormData();
+  data.append("avatar", file);
+  return apiClient
+    .post(`/conversations/${id}/avatar`, data, {
+      onUploadProgress: (event) =>
+        onProgress(
+          event.total ? Math.round((event.loaded / event.total) * 100) : 0,
+        ),
+    })
+    .then(body<Conversation>);
+};
 export const getConversations = () =>
   apiClient.get("/conversations").then(body<Conversation[]>);
 export const setConversationReadState = (id: string, unread: boolean) =>

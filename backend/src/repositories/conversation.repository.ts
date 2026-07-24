@@ -1,4 +1,27 @@
 import { prisma } from "../lib/prisma";
+
+const conversationInclude = {
+  participants: {
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          username: true,
+          avatarUrl: true,
+          lastSeenAt: true,
+        },
+      },
+    },
+  },
+  messages: {
+    orderBy: {
+      createdAt: "desc" as const,
+    },
+    take: 1,
+  },
+} as const;
+
 export class ConversationRepository {
   listForUser(userId: string) {
     return prisma.conversation.findMany({
@@ -12,29 +35,25 @@ export class ConversationRepository {
           },
         },
       },
-      include: {
-        participants: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                avatarUrl: true,
-                lastSeenAt: true,
-              },
-            },
-          },
-        },
-        messages: {
-          orderBy: {
-            createdAt: "desc",
-          },
-          take: 1,
-        },
-      },
+      include: conversationInclude,
       orderBy: {
         updatedAt: "desc",
       },
+    });
+  }
+  findForUser(id: string, userId: string) {
+    return prisma.conversation.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+        participants: {
+          some: {
+            userId,
+            deletedAt: null,
+          },
+        },
+      },
+      include: conversationInclude,
     });
   }
   findMember(id: string, userId: string) {
@@ -123,6 +142,63 @@ export class ConversationRepository {
             userId,
           })),
         },
+      },
+    });
+  }
+  createGroup(ownerId: string, title: string, memberIds: string[]) {
+    return prisma.conversation.create({
+      data: {
+        type: "GROUP",
+        title,
+        participants: {
+          create: [
+            {
+              userId: ownerId,
+              role: "OWNER",
+            },
+            ...memberIds.map((userId) => ({
+              userId,
+              role: "MEMBER" as const,
+            })),
+          ],
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+  }
+  addMembers(conversationId: string, userIds: string[]) {
+    return prisma.$transaction(
+      userIds.map((userId) =>
+        prisma.participant.upsert({
+          where: {
+            conversationId_userId: {
+              conversationId,
+              userId,
+            },
+          },
+          create: {
+            conversationId,
+            userId,
+            role: "MEMBER",
+          },
+          update: {
+            archivedAt: null,
+            deletedAt: null,
+            clearedAt: null,
+          },
+        }),
+      ),
+    );
+  }
+  updateGroupAvatar(conversationId: string, groupAvatarUrl: string) {
+    return prisma.conversation.update({
+      where: {
+        id: conversationId,
+      },
+      data: {
+        groupAvatarUrl,
       },
     });
   }

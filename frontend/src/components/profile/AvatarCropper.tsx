@@ -76,10 +76,14 @@ export function AvatarCropper({
   file,
   onCancel,
   onApply,
+  title = "Crop profile photo",
+  description = "Drag to reposition, then zoom until it looks right.",
 }: {
   file: File;
   onCancel: () => void;
   onApply: (file: File) => void;
+  title?: string;
+  description?: string;
 }) {
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [source, setSource] = useState("");
@@ -208,8 +212,8 @@ export function AvatarCropper({
       >
         <header>
           <div>
-            <h2 id="avatar-cropper-title">Crop profile photo</h2>
-            <p>Drag to reposition, then zoom until it looks right.</p>
+            <h2 id="avatar-cropper-title">{title}</h2>
+            <p>{description}</p>
           </div>
           <button
             type="button"

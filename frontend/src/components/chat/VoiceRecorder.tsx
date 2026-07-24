@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 
+function MicrophoneIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="8" y="3" width="8" height="12" rx="4" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
+    </svg>
+  );
+}
+
 type VoiceRecorderProps = {
   disabled?: boolean;
   onRecorded: (file: File, duration: number) => void;
@@ -151,8 +160,15 @@ export function VoiceRecorder({
     <div className="voice-recorder">
       <button
         type="button"
-        className={isRecording ? "hold-record recording" : "hold-record"}
+        className={
+          isRecording
+            ? "composer-tool-button hold-record recording"
+            : "composer-tool-button hold-record"
+        }
         disabled={disabled}
+        aria-label={
+          isRecording ? "Release to send voice message" : "Record voice message"
+        }
         title={
           disabled
             ? "Remove selected files before recording"
@@ -169,7 +185,10 @@ export function VoiceRecorder({
           if (event.key === " " || event.key === "Enter") finish(false);
         }}
       >
-        {isRecording ? `Release · ${seconds}s` : "🎙 Hold"}
+        <MicrophoneIcon />
+        <span className="composer-tool-label">
+          {isRecording ? `Release · ${seconds}s` : "Voice"}
+        </span>
       </button>
       {isRecording && (
         <div className="recording-panel">

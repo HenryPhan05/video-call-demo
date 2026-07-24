@@ -1,6 +1,14 @@
 import { prisma } from "../lib/prisma";
 
 const callInclude = {
+  conversation: {
+    select: {
+      id: true,
+      type: true,
+      title: true,
+      groupAvatarUrl: true,
+    },
+  },
   caller: {
     select: {
       id: true,
@@ -20,6 +28,14 @@ const callInclude = {
       userId: true,
       joinedAt: true,
       leftAt: true,
+      user: {
+        select: {
+          id: true,
+          username: true,
+          name: true,
+          avatarUrl: true,
+        },
+      },
     },
   },
 } as const;
@@ -29,21 +45,20 @@ export class CallRepository {
     conversationId: string;
     callerId: string;
     receiverId: string;
+    participantIds: string[];
     type: "VOICE" | "VIDEO";
   }) {
     return prisma.call.create({
       data: {
-        ...input,
+        conversationId: input.conversationId,
+        callerId: input.callerId,
+        receiverId: input.receiverId,
+        type: input.type,
         participants: {
-          create: [
-            {
-              userId: input.callerId,
-              joinedAt: new Date(),
-            },
-            {
-              userId: input.receiverId,
-            },
-          ],
+          create: input.participantIds.map((userId) => ({
+            userId,
+            joinedAt: userId === input.callerId ? new Date() : undefined,
+          })),
         },
       },
       include: callInclude,
@@ -57,6 +72,7 @@ export class CallRepository {
         participants: {
           some: {
             userId,
+            leftAt: null,
           },
         },
       },
@@ -70,18 +86,14 @@ export class CallRepository {
         status: {
           in: ["RINGING", "ACCEPTED"],
         },
-        OR: [
-          {
-            callerId: {
+        participants: {
+          some: {
+            userId: {
               in: userIds,
             },
+            leftAt: null,
           },
-          {
-            receiverId: {
-              in: userIds,
-            },
-          },
-        ],
+        },
       },
       include: callInclude,
     });
@@ -106,18 +118,24 @@ export class CallRepository {
     });
   }
 
-  accept(id: string, receiverId: string) {
+  accept(id: string, userId: string) {
     const now = new Date();
     return prisma.$transaction(async (tx) => {
       await tx.callParticipant.update({
         where: {
           callId_userId: {
             callId: id,
-            userId: receiverId,
+            userId,
           },
         },
         data: {
           joinedAt: now,
+          leftAt: null,
+        },
+      });
+      const current = await tx.call.findUniqueOrThrow({
+        where: {
+          id,
         },
       });
       return tx.call.update({
@@ -126,7 +144,29 @@ export class CallRepository {
         },
         data: {
           status: "ACCEPTED",
-          startedAt: now,
+          startedAt: current.startedAt ?? now,
+        },
+        include: callInclude,
+      });
+    });
+  }
+
+  leave(id: string, userId: string) {
+    return prisma.$transaction(async (tx) => {
+      await tx.callParticipant.update({
+        where: {
+          callId_userId: {
+            callId: id,
+            userId,
+          },
+        },
+        data: {
+          leftAt: new Date(),
+        },
+      });
+      return tx.call.findUniqueOrThrow({
+        where: {
+          id,
         },
         include: callInclude,
       });

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="chatting-gradient" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0866ff"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#chatting-gradient)" d="M10 8h44a6 6 0 0 1 6 6v30a6 6 0 0 1-6 6H29L16 59l3-9h-9a6 6 0 0 1-6-6V14a6 6 0 0 1 6-6Z"/>
+  <circle cx="21" cy="29" r="4" fill="#fff"/>
+  <circle cx="32" cy="29" r="4" fill="#fff"/>
+  <circle cx="43" cy="29" r="4" fill="#fff"/>
+</svg>

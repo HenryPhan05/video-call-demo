@@ -8,8 +8,10 @@ import {
   updateMessageSchema,
 } from "../validators/chat.validators";
 import {
+  addConversationMembersSchema,
   conversationReadStateSchema,
   createDirectConversationSchema,
+  createGroupConversationSchema,
 } from "../validators/conversation.validators";
 import * as conversations from "../controllers/conversation.controller";
 import * as messages from "../controllers/message.controller";
@@ -32,6 +34,22 @@ chatRouter.post(
   "/conversations",
   validate(createDirectConversationSchema),
   asyncHandler(conversations.createDirect),
+);
+chatRouter.post(
+  "/conversations/groups",
+  validate(createGroupConversationSchema),
+  asyncHandler(conversations.createGroup),
+);
+chatRouter.post(
+  "/conversations/:conversationId/members",
+  validate(addConversationMembersSchema),
+  asyncHandler(conversations.addMembers),
+);
+chatRouter.post(
+  "/conversations/:conversationId/avatar",
+  asyncHandler(conversations.requireGroupOwner),
+  avatarUpload,
+  asyncHandler(conversations.updateGroupAvatar),
 );
 chatRouter.patch(
   "/conversations/:conversationId/read-state",

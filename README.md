@@ -1,7 +1,7 @@
 # Chatting
 
-Chatting is a full-stack, real-time communication application for private
-conversations between registered users. It combines persistent messaging,
+Chatting is a full-stack, real-time communication application for private and
+group conversations between registered users. It combines persistent messaging,
 protected media sharing, online presence, voice messages, and one-to-one
 voice/video calls in a responsive Messenger-style interface.
 
@@ -29,6 +29,9 @@ in one application.
 ### Conversations and messaging
 
 - Search for an existing username and start a private conversation.
+- Create named groups by selecting two or more registered users.
+- Add members to existing groups. Adding someone from a private chat creates a
+  new group so the original private history is never exposed.
 - Persistent text and attachment messages stored in MySQL.
 - Send, edit, soft-delete, reply to, and react to messages.
 - View who reacted to a message.
@@ -249,6 +252,7 @@ Current realtime events include:
 - Messages: `message:new`, `message:update`, `message:delete`, `message:seen`
 - Typing: `typing:start`, `typing:stop`, `typing:update`
 - Presence: `presence:request`, `presence:snapshot`, `presence:update`
+- Conversations: `conversation:new`, `conversation:update`
 - Calls: `call:start`, `call:ringing`, `call:accept`, `call:reject`,
   `call:cancel`, `call:end`, `call:recover`
 - WebRTC: `webrtc:offer`, `webrtc:answer`, `webrtc:ice-candidate`
@@ -449,8 +453,9 @@ All API routes use the `/api/v1` prefix.
 - `/auth` — register, verify email, resend code, login, refresh, logout,
   logout-all, password change, forgot password, and reset password
 - `/users` — current profile, avatar upload, and username search
-- `/conversations` — list/create conversations, read state, archive,
-  per-user delete, messages, seen state, and attachment upload
+- `/conversations` — list/create private or group conversations, add group
+  members, read state, archive, per-user delete, messages, seen state, and
+  attachment upload
 - `/messages` — edit, soft-delete, and reactions
 - `/friends` — backend friend list and friend-request lifecycle
 - `/attachments` — protected inline viewing and downloads
@@ -549,4 +554,3 @@ Before deployment:
 - Configure reverse-proxy upload limits.
 - Add logging, monitoring, rate-limit storage, and orphan-file cleanup.
 - Run `prisma migrate deploy`, never `prisma migrate dev`, in production.
-

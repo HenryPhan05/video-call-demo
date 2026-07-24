@@ -39,8 +39,8 @@ export class CallService {
       callerId,
     );
     if (!participantIds) throw new AppError("Conversation not found.", 404);
-    if (participantIds.length !== 2)
-      throw new AppError("Only one-to-one calls are currently supported.", 400);
+    if (participantIds.length < 2)
+      throw new AppError("A call needs at least two members.", 400);
     const receiverId = participantIds.find((id) => id !== callerId);
     if (!receiverId) throw new AppError("Call recipient not found.", 404);
     if (await calls.findActiveForUsers([callerId, receiverId]))
@@ -49,6 +49,7 @@ export class CallService {
       conversationId,
       callerId,
       receiverId,
+      participantIds,
       type,
     });
   }
@@ -59,26 +60,69 @@ export class CallService {
     return call;
   }
 
-  async otherParticipant(callId: string, userId: string) {
+  async signalParticipant(
+    callId: string,
+    userId: string,
+    requestedUserId?: string,
+  ) {
     const call = await this.participant(callId, userId);
+    const sender = call.participants.find(
+      (participant) => participant.userId === userId,
+    );
+    if (!sender || sender.leftAt)
+      throw new AppError("You are no longer in this call.", 403);
+    const targetUserId =
+      requestedUserId ??
+      call.participants.find((participant) => participant.userId !== userId)
+        ?.userId;
+    if (!targetUserId || targetUserId === userId)
+      throw new AppError("Call recipient not found.", 404);
+    const target = call.participants.find(
+      (participant) =>
+        participant.userId === targetUserId && !participant.leftAt,
+    );
+    if (!target) throw new AppError("Call recipient is unavailable.", 404);
     return {
       call,
-      otherUserId: call.callerId === userId ? call.receiverId : call.callerId,
+      targetUserId,
     };
   }
 
   async accept(callId: string, userId: string) {
     const call = await this.participant(callId, userId);
-    if (call.receiverId !== userId || call.status !== "RINGING")
+    const participant = call.participants.find(
+      (item) => item.userId === userId,
+    );
+    if (
+      call.callerId === userId ||
+      participant?.joinedAt ||
+      participant?.leftAt ||
+      !["RINGING", "ACCEPTED"].includes(call.status)
+    )
       throw new AppError("This call can no longer be accepted.", 409);
     return calls.accept(callId, userId);
   }
 
   async reject(callId: string, userId: string) {
     const call = await this.participant(callId, userId);
-    if (call.receiverId !== userId || call.status !== "RINGING")
+    const participant = call.participants.find(
+      (item) => item.userId === userId,
+    );
+    if (
+      call.callerId === userId ||
+      participant?.joinedAt ||
+      participant?.leftAt ||
+      !["RINGING", "ACCEPTED"].includes(call.status)
+    )
       throw new AppError("This call can no longer be rejected.", 409);
-    return calls.finish(callId, "REJECTED");
+    if (call.participants.length === 2)
+      return calls.finish(callId, "REJECTED");
+    const updated = await calls.leave(callId, userId);
+    const remainingInvitees = updated.participants.filter(
+      (item) => item.userId !== updated.callerId && !item.leftAt,
+    );
+    if (!remainingInvitees.length) return calls.finish(callId, "MISSED");
+    return updated;
   }
 
   async cancel(callId: string, userId: string) {
@@ -92,7 +136,12 @@ export class CallService {
     const call = await this.participant(callId, userId);
     if (!["RINGING", "ACCEPTED"].includes(call.status))
       throw new AppError("This call has already ended.", 409);
-    return calls.finish(callId, call.status === "RINGING" ? "MISSED" : "ENDED");
+    if (call.callerId === userId || call.participants.length === 2)
+      return calls.finish(
+        callId,
+        call.status === "RINGING" ? "MISSED" : "ENDED",
+      );
+    return calls.leave(callId, userId);
   }
 
   active(userId: string) {
